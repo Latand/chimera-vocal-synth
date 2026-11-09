@@ -1,6 +1,8 @@
 //! Geometric checks of the tongue shapes and side cavities the research lists (validation plan
-//! T-features and T-anatomy). Each check measures the model and compares with a line taken
-//! from the DVTD measurements or a cited number; the CLI tabulates them and the tests hold them.
+//! T-features and T-anatomy). Each check measures the model and compares with a pass line of this
+//! project's (set to enclose what the DVTD speakers show) or a cited number; the CLI tabulates
+//! them and the tests hold them. The reference's own measurements are not written here: they
+//! stay with the data, outside the repository.
 use super::lamina::Lamina;
 use super::*;
 
@@ -114,7 +116,7 @@ pub fn check_one(m: &Tract3d, f: &Tract3dFrame, name: &str, shape: &ShapeParams,
             push(
                 "narrow single channel",
                 format!("{:.3} cm², {} channel(s) at s/L {:.2}", c.area, c.channels, at),
-                "≤ 0.20 cm², 1 channel, s/L 0.85–0.95 (DVTD 0.15/0.12 cm² at 0.90/0.93)",
+                "≤ 0.20 cm², 1 channel, s/L 0.85–0.95 (encloses both DVTD speakers' /s/)",
                 hinge(c.area - 0.2) * 5. + (c.channels as f64 - 1.).abs() * 0.3 + hinge(0.85 - at) * 5. + hinge(at - 0.95) * 5.,
             );
             let behind = f.cuts().iter().filter(|q| q.s < c.s && q.s > c.s - 1.5).filter_map(groove_index).fold(f64::NEG_INFINITY, f64::max);
@@ -124,7 +126,7 @@ pub fn check_one(m: &Tract3d, f: &Tract3dFrame, name: &str, shape: &ShapeParams,
             let c = cut_at(f, 0.6, 0.95, |c| c.area).unwrap();
             let at = c.s / l;
             let thin = f.cuts().iter().filter(|q| q.s < c.s && q.s > c.s - 2.5 && q.height < 0.6 && q.area < 1.5).count();
-            push("constriction behind /s/", format!("{:.3} cm² at s/L {at:.2} (/s/ at {s_at:.2})", c.area), "≤ 0.15 cm², further back than /s/ (DVTD 0.10 cm² at 0.79–0.88)", hinge(c.area - 0.15) * 5. + hinge(at - s_at + 0.01) * 5.);
+            push("constriction behind /s/", format!("{:.3} cm² at s/L {at:.2} (/s/ at {s_at:.2})", c.area), "≤ 0.15 cm², further back than /s/ (as in both DVTD speakers)", hinge(c.area - 0.15) * 5. + hinge(at - s_at + 0.01) * 5.);
             push("long thin channel behind it", format!("{thin} cuts within 2.5 cm behind, under 0.6 cm high"), "≥ 4 (≥ 1 cm of thin channel)", hinge(4. - thin as f64) * 0.2);
             let g = max_surface_groove(&m.parts, 0.7, 0.97);
             push("domed blade without a groove", format!("largest surface concavity {g:.2} cm over the blade"), "≤ 0.05 cm", hinge(g - 0.05));

@@ -131,17 +131,28 @@ pub fn table(table: &Value, path: &Path) -> Result<(), String> {
             f(&g["medianBetweenSpeakerScaledD"], 1., 2),
         );
     }
-    s.push_str("\n| Case | IPA | Default d | Fitted d | Between speakers (scaled) | Nearest reference | F1/F2/F3 error % (fitted) | Constriction s/L, cm², ch: MRI → model | Mean cut IoU |\n|---|---|---:|---:|---:|---|---|---|---:|\n");
+    // This table goes into the repository's docs: it holds this project's errors only. The
+    // reference's own measurements (where its constriction is, how wide, how many channels)
+    // stay in table.json, outside git.
+    s.push_str("\n| Case | IPA | Default d | Fitted d | Between speakers (scaled) | Nearest reference | F1/F2/F3 error % (fitted) | Constriction, model against MRI: place (Δ s/L), area (×), channels | Mean cut IoU |\n|---|---|---:|---:|---:|---|---|---|---:|\n");
     for r in table["rows"].as_array().unwrap() {
         let peaks = r["fitResonanceErrorPercent"].as_array().map_or("—".into(), |a| a.iter().map(|x| f(x, 1., 0)).collect::<Vec<_>>().join(" / "));
-        let con = |c: &Value| if c.is_null() { "—".to_string() } else { format!("{} {} {}", f(&c["fraction"], 1., 2), f(&c["area"], 1., 2), c["channels"]) };
+        let (rc, fc) = (&r["referenceConstriction"], &r["fitConstriction"]);
+        let con = match (rc["fraction"].as_f64(), fc["fraction"].as_f64(), rc["area"].as_f64(), fc["area"].as_f64(), rc["channels"].as_i64(), fc["channels"].as_i64()) {
+            (Some(rp), Some(fp), Some(ra), Some(fa), Some(rn), Some(fnn)) => {
+                let ratio = if ra > 0. { format!("×{:.2}", fa / ra) } else { "—".to_string() };
+                let channels = if rn == fnn { "equal".to_string() } else { format!("{:+}", fnn - rn) };
+                format!("{:+.2}, {ratio}, {channels}", fp - rp)
+            }
+            _ => "—".to_string(),
+        };
         let iou = r["shapeMetrics"].as_array().map(|a| {
             let v: Vec<f64> = a.iter().filter_map(|x| x["iou"].as_f64()).collect();
             v.iter().sum::<f64>() / v.len().max(1) as f64
         });
         let _ = writeln!(
             s,
-            "| {} | {} | {} | {} | {} | {} | {} | {} → {} | {} |",
+            "| {} | {} | {} | {} | {} | {} | {} | {} | {} |",
             r["case"].as_str().unwrap_or(""),
             r["ipa"].as_str().unwrap_or(""),
             f(&r["defaultD"], 1., 3),
@@ -149,8 +160,7 @@ pub fn table(table: &Value, path: &Path) -> Result<(), String> {
             f(&r["betweenSpeakerScaledD"], 1., 2),
             if r["identified"] == true { "itself".to_string() } else { r["nearestReference"].as_str().unwrap_or("—").to_string() },
             peaks,
-            con(&r["referenceConstriction"]),
-            con(&r["fitConstriction"]),
+            con,
             iou.map_or("—".into(), |x| format!("{x:.2}")),
         );
     }
