@@ -10,7 +10,7 @@ import { singNoteOn, singNoteOff, stopSinging, ensureDictionary } from "./singin
 import { stopSpeaking } from "./speech.ts";
 import { connectMidi, disconnectMidi, type MidiStatus } from "./midi.ts";
 
-export type Mode = "play" | "speak" | "sing" | "bestiary" | "beatbox";
+export type Mode = "play" | "speak" | "sing" | "bestiary" | "beatbox" | "lab";
 
 export interface BeatState {
   steps: (BeatStep | null)[];
@@ -30,7 +30,19 @@ export interface ViewOptions {
   threeD: boolean;
 }
 
+export interface LabState {
+  shape: Record<string, number>;
+  slice: number;
+  plane: "perpendicular" | "midsagittal" | "coronal" | "axial";
+  position: number;
+  hidden: string[];
+  cutaway: boolean;
+  explode: boolean;
+  follow: boolean;
+}
 interface State {
+  lab: LabState;
+  setLab: (patch: Partial<LabState>) => void;
   started: boolean;
   starting: boolean;
   startError: string | null;
@@ -118,6 +130,8 @@ let session = 0;
 const FIRST_BEAT = BEAT_PRESETS[0];
 
 export const useStore = create<State>((set, get) => ({
+  lab: { shape: {}, slice: 0.8, plane: "perpendicular", position: 4, hidden: [], cutaway: true, explode: false, follow: false },
+  setLab: (patch) => set((s) => ({ lab: { ...s.lab, ...patch } })),
   started: false,
   starting: false,
   startError: null,
@@ -140,7 +154,7 @@ export const useStore = create<State>((set, get) => ({
     // notes held across the switch would keep breathing into the other voice
     set({ mode: m, heldNotes: [] });
     // speech belongs to Speak: under a creature the human clock stops and it would resume later
-    if (prev === "speak" || m === "bestiary") stopSpeaking();
+    if (prev === "speak" || prev === "lab" || m === "bestiary") stopSpeaking();
     if ((prev === "bestiary") !== (m === "bestiary")) {
       // a sustain belongs to the voice it was started on
       set({ hold: false });
@@ -154,6 +168,7 @@ export const useStore = create<State>((set, get) => ({
     if (prev === "sing") stopSinging();
     // speech and song breathe by themselves: a held breath would drone under them
     if (m === "speak" || m === "sing") set({ hold: false });
+    if (prev === "lab") set({ hold: false });
     if (m === "sing") ensureDictionary();
     if (m === "beatbox") {
       // a beatboxer waits with the jaw nearly closed; the sounds bring their own breath

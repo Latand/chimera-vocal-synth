@@ -165,6 +165,26 @@ async function run(viewport: { width: number; height: number }, tag: string) {
   await page.waitForTimeout(300);
   await page.getByRole("button", { name: "Stop" }).click();
   await page.waitForTimeout(300);
+  // Lab uses the real wasm geometry and the current engine for sound.
+  await page.getByRole("radio", { name: "Lab", exact: true }).click();
+  await page.getByRole("heading", { name: "Tract", exact: true }).waitFor();
+  await page.locator(".lab-presets button").filter({ hasText: /^a$/ }).click();
+  for (const plane of ["coronal", "axial", "midsagittal", "perpendicular"]) {
+    await page.getByRole("button", { name: plane, exact: true }).click();
+    if (!(await page.locator(".lab-cut").isVisible())) errors.push(`[${tag}] lab cut missing for ${plane}`);
+  }
+  await page.getByRole("button", { name: "Solo Tongue", exact: true }).click();
+  await page.getByRole("button", { name: "Show all", exact: true }).click();
+  await page.getByRole("button", { name: "Hold", exact: true }).click();
+  await page.waitForTimeout(800);
+  const labRms = await page.evaluate(() => {
+    // @ts-expect-error debug handle
+    return window.__chimeraEngine?.latest?.t?.outRms ?? -1;
+  });
+  if (!(labRms > 0.005)) errors.push(`[${tag}] lab hold is silent (${labRms})`);
+  await page.screenshot({ path: `${outDir}/${tag}-7-lab.png`, fullPage: true });
+  await page.getByRole("button", { name: "Stop", exact: true }).click();
+  if (await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)) errors.push(`[${tag}] lab scrolls horizontally`);
   // back to the human voice
   await page.getByRole("radio", { name: "Play" }).click();
   await page.waitForTimeout(600);

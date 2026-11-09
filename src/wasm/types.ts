@@ -303,3 +303,74 @@ export interface CreatureTelemetry {
   source: Record<string, number>;
   call: string | null;
 }
+
+/** Inspection geometry in cm; x forward, y up, z speaker-right. */
+export interface Tract3dSpec {
+  key: string;
+  element: string;
+  unit: string;
+  min: number;
+  max: number;
+  default: number;
+  doc: string;
+}
+export type Tract3dShape = Record<string, number>;
+export interface Tract3dPreset {
+  name: string;
+  artic: HumanArtic;
+  shape: Tract3dShape;
+}
+export interface Tract3dCut {
+  origin: { x: number; y: number };
+  u: { x: number; y: number };
+  s: number;
+  area: number;
+  weightedArea: number;
+  perimeter: number;
+  channels: number;
+  width: number;
+  height: number;
+  fold: boolean;
+  rows: {
+    z: number;
+    intervals: { lo: number; hi: number; component: number }[];
+  }[];
+  regions: {
+    tag: string;
+    area: number;
+    minZ: number;
+    maxZ: number;
+    minU: number;
+    maxU: number;
+  }[];
+}
+export interface Tract3dFrame {
+  centreline: { x: number; y: number }[];
+  slices: Tract3dCut[];
+  areaFn: {
+    s: number[];
+    area: number[];
+    weightedArea: number[];
+    perimeter: number[];
+    channels: number[];
+    width: number[];
+    height: number[];
+    length: number;
+    volume: number;
+    minArea: number;
+    minS: number;
+  };
+  cavities: {
+    kind: string;
+    side: number;
+    attachment: number;
+    volume: number;
+    neckArea: number;
+    depth: number;
+  }[];
+  shape: Tract3dShape;
+  meshes: { element: string; positions: number[]; indices: number[] }[];
+  midsagittal: [string, { x: number; y: number }[]][];
+  coronal: Tract3dCut;
+  axial: Tract3dCut;
+}

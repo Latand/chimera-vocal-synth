@@ -5,6 +5,7 @@
 
 use chimera::airway::frequency::{find_peaks, transfer_function};
 use chimera::anatomy::human::{BodyMix, HumanArtic, HumanFrame};
+use chimera::anatomy::tract3d::{Tract3d, Tract3dFrame, ShapeParams, Cut};
 use chimera::control::beat_player::BeatPlayer;
 use chimera::creatures::voice::CreatureVoice;
 use chimera::math;
@@ -22,6 +23,8 @@ struct Model {
     body: BodyMix,
     fs: f64,
     airway: HumanAirway,
+    tract3d: Tract3d,
+    frame3d: Tract3dFrame,
 }
 
 #[derive(Default)]
@@ -68,7 +71,7 @@ fn dispatch(st: &mut State, req: &Value) -> Res {
             let i = match st.models.iter().position(|x| x.body == body && x.fs == fs * m) {
                 Some(i) => i,
                 None => {
-                    st.models.push(Model { id: st.next_model, body, fs: fs * m, airway: HumanAirway::new(fs * m, body.body()) });
+                    st.models.push(Model { id: st.next_model, body, fs: fs * m, airway: HumanAirway::new(fs * m, body.body()), tract3d: Tract3d::new(body.body()), frame3d: Tract3dFrame::default() });
                     st.next_model += 1;
                     st.models.len() - 1
                 }
@@ -88,6 +91,22 @@ fn dispatch(st: &mut State, req: &Value) -> Res {
             let id: usize = arg(req, "model")?;
             st.models.retain(|m| m.id != id);
             Ok(Value::Null)
+        }
+        "tract3dSpecs" => to_json(&Tract3d::specs()),
+        "tract3dPresets" => to_json(&chimera::anatomy::tract3d::presets(arg(req, "body")?)),
+        "tract3d" => {
+            let a: HumanArtic = arg(req, "artic")?;
+            let shape = arg::<Option<ShapeParams>>(req, "shape")?.unwrap_or_default();
+            let m = model(st, req)?;
+            m.tract3d.compute(&a, &shape, &mut m.frame3d)?;
+            let n=m.frame3d.area_fn.s.len();
+            let meshes=if req.pointer("/want/meshes").and_then(Value::as_bool).unwrap_or(true) {to_json(&m.tract3d.meshes())?}else{Value::Null};
+            let mut coronal=Cut::default();let mut axial=Cut::default();
+            let x=req.pointer("/want/x").and_then(Value::as_f64).unwrap_or(4.0)*m.body.body().scale;
+            let y=req.pointer("/want/y").and_then(Value::as_f64).unwrap_or(7.0)*m.body.body().scale;
+            m.tract3d.cut_plane(chimera::anatomy::geom::v(x,y),chimera::anatomy::geom::v(0.,1.),&mut coronal);
+            m.tract3d.cut_plane(chimera::anatomy::geom::v(x,y),chimera::anatomy::geom::v(1.,0.),&mut axial);
+            Ok(json!({"centreline":m.frame3d.centreline,"slices":&m.frame3d.slices[..n],"areaFn":m.frame3d.area_fn,"cavities":m.frame3d.cavities,"shape":m.frame3d.shape,"meshes":meshes,"midsagittal":m.tract3d.midsagittal(),"coronal":coronal,"axial":axial}))
         }
         "restTip" => to_json(&chimera::anatomy::human::rest_tip(arg(req, "jaw")?, arg(req, "tbX")?, arg(req, "tbY")?)),
         "frame" => {

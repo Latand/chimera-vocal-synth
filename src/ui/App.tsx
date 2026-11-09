@@ -33,6 +33,8 @@ function showId(): string | null {
   return id && /^[\w-]+$/.test(id) ? id : null;
 }
 
+const LabPanel = lazy(() => import("./components/LabPanel.tsx").then((m) => ({ default: m.LabPanel })));
+
 function TopBar() {
   const started = useStore((s) => s.started);
   const starting = useStore((s) => s.starting);
@@ -64,6 +66,7 @@ function TopBar() {
           { value: "sing", label: "Sing" },
           { value: "bestiary", label: "Bestiary" },
           { value: "beatbox", label: "Beatbox" },
+          { value: "lab", label: "Lab" },
         ]}
       />
       {mode !== "bestiary" && (
@@ -231,8 +234,14 @@ function Wall() {
     <div className={`app mode-${mode}`}>
       <TopBar />
       <main className={`wall wall-${mode}`}>
-        <LeftScreen />
-        {mode === "play" ? <PlayRight /> : mode === "speak" ? <SpeakRight /> : mode === "sing" ? <SingRight /> : mode === "beatbox" ? <BeatboxRight /> : <BestiaryRight />}
+        {mode === "lab" ? (
+          <Suspense fallback={<p>Loading geometry lab…</p>}><LabPanel /></Suspense>
+        ) : (
+          <>
+            <LeftScreen />
+            {mode === "play" ? <PlayRight /> : mode === "speak" ? <SpeakRight /> : mode === "sing" ? <SingRight /> : mode === "beatbox" ? <BeatboxRight /> : <BestiaryRight />}
+          </>
+        )}
       </main>
     </div>
   );

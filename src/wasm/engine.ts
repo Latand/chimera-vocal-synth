@@ -259,3 +259,21 @@ export function airwayTransfer(m: AirwayModel, artic: HumanArtic): { freqs: numb
 export function creaturePreview(id: string, params?: Record<string, number>): CreatureTelemetry {
   return call("creaturePreview", { id, params: params ?? {} });
 }
+
+// Inspection calls stay on the page's model; the worklet does not consume 3D-only offsets.
+export function tract3dSpecs(): import("./types.ts").Tract3dSpec[] {
+  return call("tract3dSpecs");
+}
+export function tract3dPresets(
+  body: BodyMix,
+): import("./types.ts").Tract3dPreset[] {
+  return call("tract3dPresets", { body });
+}
+export function tract3d(
+  m: AirwayModel,
+  artic: HumanArtic,
+  shape: import("./types.ts").Tract3dShape,
+  want: { meshes?: boolean; x?: number; y?: number } = {},
+): import("./types.ts").Tract3dFrame {
+  return call("tract3d", { model: m.model, artic, shape, want });
+}
