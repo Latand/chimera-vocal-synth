@@ -240,4 +240,98 @@ unregistered here.
   instead; the casts were not measured.
 - Registration of the USC planes, and any measured /ɹ/ feature.
 - Descriptors for the sublingual and buccal spaces (they are geometry, they have no numbers yet).
-- Any effect on the sound: the voice still uses the engine's 1D area law (phase 2).
+- Any effect of the 3D geometry on the sound: the voice still uses the engine's 1D area law
+  (phase 2). The operator's amendment changed the voice's acoustics themselves (§7, §8).
+
+## 7. Low frequencies: the engine's acoustics against DVTD's measured prints
+
+*Operator amendment, 2026-11-09. `chimera tract3d acoustics` (tools/tract3d/README.md).*
+
+DVTD 3D-printed each of its 44 tracts and measured the volume-velocity transfer function
+U_lips/U_glottis with the glottis closed, in room air (345 m/s), on hard plastic walls. The
+same MRI area functions (cut by this project's reference pipeline, §1) went through the
+engine's 1D acoustics with the voice's own section length (2.5 mm), perimeter factors and
+radiation load, walls rigid like the prints, the engine's frequency axis read at c = 345 m/s.
+Peaks: at least 4 dB of prominence, measured curves smoothed over ±3 Hz.
+
+| Engine physics | F1 error, median signed / absolute | F2 error, median signed / absolute | F1 bandwidth, engine / measured, median | 100–1000 Hz curve, RMS dB difference, median |
+|---|---:|---:|---:|---:|
+| before | +5.5 % / 5.5 % | +5.6 % / 5.6 % | 0.65 | 2.91 |
+| after | +4.7 % / 4.7 % | +4.8 % / 5.1 % | 0.80 | 2.53 |
+
+n = 44. The places that fitted worst were the narrow necks into wide cavities: the 11 sounds
+whose F1 sat 9 % or more above the print's (/s/ of both speakers, female /ʃ/, /y u ʊ ç f/ and
+the female /l/) moved from a median +10.5 % to +8.3 % (female /s/ +16.9 → +10.6 %, male /s/
++15.4 → +10.8 %, female /ʃ/ +12.9 → +8.8 %, male /y/ +11.1 → +7.8 %, male /u/ +9.4 → +7.0 %).
+
+What changed (on in the voice's tract, off for creatures):
+- **The inertance of abrupt area changes.** A plane-wave tube treats a step between two
+  sections as a plain junction. The flow out of a narrow neck drags the air beyond it, which
+  adds a length δ = 0.82·r·(1 − 1.35α + 0.31α³) to the neck (α the ratio of the radii,
+  Kergomard & Garcia 1987, J. Sound Vib. 114:465); it vanishes for gentle steps (α ≳ 0.9) and
+  lowers F1 where a constriction opens into a cavity (/u/, /y/, the sibilants, rounded lips).
+- **The thermal boundary layer.** The engine had the viscous loss at the walls only; the heat
+  exchange beside it (Kirchhoff; Flanagan 1972, eq. 3.33) is a shunt conductance per section of
+  similar size. It raised the rigid-wall F1 bandwidth from 0.65 to 0.80 of the prints'.
+
+What stays: about 5 % of F1 above the prints, the same on all sounds, which this 1D chain does
+not resolve (the research stage's own chain-matrix solver showed +6.7 %, research.md §5). It
+is the 1D reduction itself: cross-sections perpendicular to a curved centreline, no transverse
+modes, the side branches folded into the area. Phase 2's 3D solver is the reference for that.
+The remaining bandwidth gap (0.80) includes the prints' own losses (their plastic walls and the
+measuring setup) as well as the model's. In the voice, the yielding walls dominate the
+bandwidths at F1 (§8).
+
+The fitted model's F1–F3 errors in §1 (rounded vowels, /f/) compare the model's area function
+with the MRI's through the same solver; they are not affected by these terms and are unchanged.
+
+## 8. The walls and the soft palate in the voice
+
+*Operator amendment, 2026-11-09. `chimera tract3d walls` on the voice's own airway
+(`HumanAirway`, glottis closed), the calibrated vowels, male and female.*
+
+The voice's tract had yielding walls before: one tissue for every section (mass 1.5 g/cm²,
+resistance 1600 dyn·s/cm³, stiffness 3·10⁵ dyn/cm³: its own resonance at 71 Hz) over the whole
+perimeter. Now each section's wall is the tissue there, at control rate: the tongue, the
+pharyngeal constrictors, the laryngeal walls, the cheeks and the lips by region, with the hard
+palate and the teeth rigid; the stiffnesses put each tissue's resonance near the ~20 Hz Hanna,
+Smith & Wolfe measured through the lips of ten subjects
+([doi:10.1121/1.4948754](https://doi.org/10.1121/1.4948754)), the masses span their 1–2 cm
+effective wall thickness, and the resistances (1.3× the 1000–1600 dyn·s/cm³ in use since
+Flanagan and Stevens) keep the F1 bandwidths of the close vowels inside their 50–90 Hz. The
+soft palate with the uvula is a membrane between the top of the pharynx and the nasopharynx.
+
+Same postures, three acoustics: rigid walls; the walls as they were; the tissue walls, the soft
+palate's membrane and the §7 terms.
+
+| Measure | Male: rigid / before / after | Female: rigid / before / after | Human (Hanna et al. 2016) |
+|---|---|---|---|
+| Tissue resonance R0 through the sealed lips, /ə/ | – / 60 / 31 Hz | – / 61 / 31 Hz | ≈ 20 Hz |
+| Anti-resonance R̄0 (wall mass with the air's compliance), /ə/ | – / 237 / 187 Hz | – / 250 / 195 Hz | ≈ 200 Hz |
+| F1, median of 10 vowels | 444 / 503 / 482 Hz | 494 / 552 / 533 Hz | |
+| F1 bandwidth, median of 10 vowels | 18 / 49 / 48 Hz | 20 / 47 / 46 Hz | 50–90 Hz (men), 70–90 Hz (women) |
+| F1 bandwidth /i/, /u/, /a/ | 26, 29, 23 / 81, 82, 38 / 78, 86, 39 Hz | 20, 26, 27 / 59, 68, 40 / 58, 71, 41 Hz | |
+| Nose / mouth at F1 through the closed velum, /i/, /u/, /a/ | – | – | (no measurement found) |
+| … after | −25, −23, −70 dB | −29, −25, −71 dB | |
+
+- **What the walls do.** They raise F1 above the rigid tube's (walls give a little under the
+  pulse of pressure) and widen it; the effect falls off with frequency (B2, B3 move by a few Hz).
+  The tissue's own resonance (R0) is sub-audio; between it and F1 the walls' mass sets the
+  lowest F1 a closed tract can have (R̄0, the "voice bar" of voiced stops).
+- **What changed.** R0 moved from 60 Hz (the stiff old walls) to 31 Hz, R̄0 from 237–250 Hz
+  to 187–195 Hz, both towards the measured 20 and 200 Hz. The same articulation now has its
+  F1 4 % (male) and 3 % (female) lower; the vowel table was recalibrated so the voice's vowels
+  keep their target formants (median formant error after calibration: male F1 0.9 %, F2 0.8 %;
+  the base calibration rerun gave 0.6 % and 0.5 %).
+- **The soft palate and the uvula.** With the port shut, the soft palate moves with the
+  pressure difference across it, and the close vowels (small mouth opening, high pressure in
+  the mouth at F1) drive the nasal cavity through it: the nose radiates 23–25 dB below the
+  mouth at F1 for /u/ and /i/ (male), 70 dB below for /a/. This is the path by which oral vowels
+  reach the nose without any air path; no published measurement of its size was found here, so
+  the numbers are the model's.
+- **Not matched.** The F1 bandwidths of the open vowels (/a/ 39 Hz male, 41 Hz female) and the
+  female vowels' median (46 Hz) stay below the measured ranges; raising the resistance further
+  moved R0 and R̄0 away from theirs. Hanna's bandwidths are of impedance resonances through the
+  lips, a close but different quantity from the transfer function's.
+- **Evidence (local):** `walls.png` (transfer functions 0–1.5 kHz rigid / before / after with
+  the nose's share; impedance through the sealed lips), `walls.md`, `walls.json`.

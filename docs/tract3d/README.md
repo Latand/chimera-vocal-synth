@@ -7,6 +7,14 @@ the design: [model-design.md §0](model-design.md#0-as-built-phase-1)), the lab 
 comparison with MRI is `chimera tract3d` ([tools/tract3d](../../tools/tract3d/README.md)), and its
 numbers and critique are in [validation-results.md](validation-results.md).
 
+**Operator amendment (2026-11-09).** The lab's 3D view now sits inside a head with skin,
+subcutaneous fat, muscle, bones and cartilages, cut open with its layers' cut faces; the
+uvula moves in the voice as part of the soft palate's vibrating membrane; the engine's
+low-frequency acoustics were checked against DVTD's measured 3D-print transfer functions and
+corrected; the walls of the voice's tract vibrate by tissue. What changed and the numbers:
+[model-design.md §0.1](model-design.md#01-operator-amendment-2026-11-09-head-uvula-low-frequencies-walls),
+[validation-results.md §7–8](validation-results.md#7-low-frequencies-the-engines-acoustics-against-dvtds-measured-prints).
+
 ## The requirement
 
 The operator's request (2026-11-09, in Ukrainian; the verbatim text is kept in the task record),
@@ -84,8 +92,9 @@ before the headline set.
 
 ## Deferred — not currently justified
 
-- **Any change to the sound, the gesture records, the planner or the goldens:** phase 2 by the
-  operator's decision.
+- **Sound from the 3D geometry, the gesture records, the planner:** phase 2 by the operator's
+  decision. (The operator's amendment changed the voice's acoustics: walls, soft palate, losses
+  and inertances; the voice still uses its 1D area law.)
 - **The offline 3D wave solver and "precise render":** phase 2; phase 1 leaves `air()` and the
   voxelizer as hooks.
 - **The nasal cavity and sinuses in 3D:** not in the acceptance list; the 1D nasal branch stays.
@@ -102,6 +111,11 @@ before the headline set.
 - **Switching the face screen's 3D view to the engine's meshes:** a follow-up once the lab has
   proven the meshes.
 - **Child anatomy beyond body scaling:** no child 3D reference was found.
+- **From the operator amendment (2026-11-09):** a 3D lip-rounding freedom (the fitted rounded
+  vowels' F1 errors in validation-results §1 come from the lip opening's width floor); walls
+  from the 3D geometry's own perimeter and tissue per cut (the voice reads regions of the 2D
+  frame); the uvula's flow-driven vibration (a uvular trill or snore, a source like the vocal
+  folds); a sculpted or scanned face (the head is a parametric loft of the face screen's outline).
 
 ## Notes
 

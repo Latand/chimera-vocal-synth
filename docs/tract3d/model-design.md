@@ -74,6 +74,55 @@ the code (`crates/chimera/src/anatomy/tract3d/`) is the reference.
 - **Lab.** As §9, with the plane chooser offering a sagittal plane at any lateral offset instead
   of only the midsagittal one, an x-ray toggle (lines behind surfaces), and the 3D-only
   parameters shown as the values in use (derive + offset).
+- **Faded area.** A cut's `weightedArea` weighs every air interval by its own distance from the
+  band (`1 − smoothstep(band, band + 0.3 cm, distance)`). It used to take one weight per
+  region, from the region's nearest interval, and a pocket beside the tongue that lost its last
+  overlapping lamina (connection is yes/no) left the region at once: 0.86 cm² in one 0.02 mm step
+  of the tongue body at /ə/. `area`, the number compared with MRI, keeps its region rule.
+
+### 0.1 Operator amendment (2026-11-09): head, uvula, low frequencies, walls
+
+The operator asked for a head that looks like a real one from outside with correct layers
+beneath the skin, for the uvula ("the small second tongue") in shape and sound, for the low
+frequencies that did not fit, and for the soft tissues' vibration. This lifts phase 1's
+no-sound-change fence for the acoustics; the voice still does not read the 3D tract.
+
+- **Head (lab).** `src/ui/render/head3d.ts`, display only: the face screen's head (profile.ts
+  outlines at the current articulation, anatomy3d.ts's cross-section tables, rounder in front),
+  with the brow ridge, eye sockets, cheekbones, closed eyelids, ears, the lips' colour round a
+  mouth opening between the engine's lip edges. Beneath the skin (0.2 cm): subcutaneous fat and a
+  muscle layer as nested closed surfaces with regional thicknesses (fat thin over scalp, forehead
+  and nose, thick in the cheeks and neck; muscle thick at the masseter, temporalis,
+  sternocleidomastoid and nuchal muscles, thin over the larynx), then the deep tissue. Bones and
+  cartilages: skull vault, brain, mandible (turned by the jaw), cervical vertebral bodies, hyoid,
+  thyroid cartilage, trachea. Cut away, each closed surface shows its cut face in its tissue's
+  colour (stencil parity), the tract's midsagittal air (the engine's outer and inner walls), the
+  nasal cavity and the trachea are holes in those faces so the tract behind shows, and the
+  tongue, soft and hard palate, teeth and epiglottis are drawn on the cut. The tract's elements
+  are shaded in tissue colours inside the head; without the head the lab looks as before.
+- **Uvula and epiglottis.** Both were in the 3D model (the uvula as the soft palate's middle lobe,
+  `uvulaLength`, `uvulaWidth`; the epiglottis plate with the valleculae). In the voice the soft
+  palate with the uvula is now a vibrating membrane (`Membrane`, 5 cm² × k², 0.9 g/cm² plus the
+  uvula's 0.55 g) between the top of the pharynx and the nasopharynx: with the port shut, close
+  vowels still drive the nasal cavity through it (`chimera tract3d walls`). The uvula's static
+  share of the oropharynx stays the engine's midsagittal velum tip.
+- **Low frequencies.** The engine's 1D acoustics, run on DVTD's MRI area functions, put F1 a
+  median 5.5 % above the transfer functions DVTD measured on 3D prints of the same tracts, with
+  F1 bandwidths at 0.65 of measured. Two physical terms the plane-wave tube lacked: the
+  evanescent-mode inertance at abrupt area changes (the length correction of a step between
+  tubes, Kergomard & Garcia 1987) and the thermal boundary-layer loss beside the viscous one
+  (`AirwayNetwork::discontinuity`, `::thermal`; on in the human tract). Numbers:
+  [validation-results.md §7](validation-results.md#7-low-frequencies-the-engines-acoustics-against-dvtds-measured-prints).
+- **Walls.** The human tract's walls were one tissue everywhere (`WALL_SOFT`, its own resonance
+  at 71 Hz, the whole perimeter yielding). Now per section and control rate: tongue, pharyngeal
+  constrictors, laryngeal walls, cheeks and lips by region, the hard palate and the teeth rigid,
+  stiffness at Hanna et al.'s measured ~20 Hz tissue resonance, masses for their 1–2 cm
+  effective thickness (`physics::TISSUE_*`). Numbers and spectra:
+  [validation-results.md §8](validation-results.md#8-the-walls-and-the-soft-palate-in-the-voice).
+- **Calibration.** The vowel table was regenerated with the new acoustics (`chimera calibrate
+  vowels all`) so the vowels keep their target formants; the consonant table with it. The 2D
+  model's resampling counts each section's two ends as half samples, so a closure reaching a
+  section's edge shuts it continuously (the recalibrated /u/ found a 0.5 cm² flicker there).
 
 ## 1. Decisions in one screen
 

@@ -28,6 +28,17 @@ bun tools/tract3d/capture.ts "$OUT/dvtd"          # SVG figures → PNG
 bun tools/tract3d/usc-compare.ts "$CLI" "$TRACT3D_DATA/usc75/recon" "$OUT/usc"
 bun tools/tract3d/capture.ts "$OUT/usc"
 
+# the engine's 1D acoustics against the transfer functions DVTD measured on 3D prints of the
+# same tracts (reads validate's NN-name-reference.json for the MRI area functions)
+"$CLI" tract3d acoustics "$TRACT3D_DATA/dvtd" "$OUT/dvtd" "$OUT/acoustics"
+# the voice's airway with rigid walls, the walls it had before, and the tissue walls and soft
+# palate it has now: bandwidths, nasal share, tissue resonances (no data needed)
+"$CLI" tract3d walls "$OUT/walls"
+bun tools/tract3d/capture.ts "$OUT/acoustics"; bun tools/tract3d/capture.ts "$OUT/walls"
+
+# numbered frames of the lab's 3D view (tract, head whole / cut / see-through, uvula, larynx)
+bun tools/tract3d/lab-capture.ts http://127.0.0.1:4173/ "$OUT/frames"
+
 # the lab's geometry call in the browser (against `bun run preview`)
 bun tools/tract3d/browser-bench.ts http://127.0.0.1:4173/ "$OUT/browser.json"
 ```
