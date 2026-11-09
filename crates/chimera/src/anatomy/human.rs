@@ -1323,9 +1323,24 @@ impl HumanVocalTract {
             let sub = 8;
             let mut gi = 0usize;
             for i in 0..n {
+                // the section's two ends count as half samples: a point closure reaching an end
+                // then shuts the section continuously (its area → 0 as the closure arrives), where
+                // the grid sample sealing it would otherwise hop from one section to the next as
+                // the tube's length changed (a 0.25 cm² flicker in front of a velar closure)
                 let mut inv = 0.0;
                 let mut closed = false;
                 let mut mn = f64::INFINITY;
+                for e in [s0 + d * i as f64, s0 + d * (i as f64 + 1.0)] {
+                    let area = area_at(e);
+                    if area < mn {
+                        mn = area;
+                    }
+                    if area <= 1e-5 {
+                        closed = true;
+                    } else {
+                        inv += 0.5 / area;
+                    }
+                }
                 for jj in 0..sub {
                     let area = area_at(s0 + d * (i as f64 + (jj as f64 + 0.5) / sub as f64));
                     if area < mn {
@@ -1353,7 +1368,7 @@ impl HumanVocalTract {
                     }
                     q += 1;
                 }
-                out[i] = if closed { 0.0 } else { sub as f64 / inv };
+                out[i] = if closed { 0.0 } else { (sub + 1) as f64 / inv };
                 if let Some(m) = mins.as_deref_mut() {
                     m[i] = if closed { 0.0 } else { js_min(mn, out[i]) };
                 }

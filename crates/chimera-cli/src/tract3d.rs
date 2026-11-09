@@ -1,5 +1,6 @@
 //! `chimera tract3d …`: exports of the parametric 3D tract and its comparison with MRI
 //! references kept outside the repository. No dataset is embedded; see tools/tract3d/README.md.
+mod acoustics;
 mod report;
 mod sheet;
 mod usc;
@@ -345,6 +346,8 @@ pub fn run(args: &[String]) -> Result<(), String> {
             tune(&args[1], crate::body_mix(option(args, "--body", "male"))?, option(args, "--iterations", "400").parse().map_err(|_| "invalid iteration count")?)
         }
         Some("usc") => usc::run(&args[1..]),
+        Some("acoustics") => acoustics::run(&args[1..]),
+        Some("walls") => acoustics::walls(&args[1..]),
         Some("benchmark") => {
             let mut m = Tract3d::new(crate::body("male")?);
             let mut f = Tract3dFrame::default();
@@ -373,7 +376,7 @@ pub fn run(args: &[String]) -> Result<(), String> {
             );
             Ok(())
         }
-        _ => Err("tract3d model|sheet|cut|presets|reference|validate|fit-derive|usc|benchmark".into()),
+        _ => Err("tract3d model|sheet|cut|presets|reference|validate|fit-derive|usc|acoustics|walls|benchmark".into()),
     }
 }
 

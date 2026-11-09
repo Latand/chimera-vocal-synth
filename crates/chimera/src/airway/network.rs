@@ -17,7 +17,7 @@
 //! Real time: `step()` and the control-rate setters allocate nothing.
 
 use crate::math::{PI, Rng, cbrt, exp, js_max, js_min, sqrt};
-use crate::physics::{C_SOUND, MU, NU, RE_CRIT, RHO, RHO_C2, WallParams};
+use crate::physics::{C_SOUND, GAMMA, KAPPA, MU, NU, RE_CRIT, RHO, RHO_C2, WallParams};
 
 /// Initial cross-sectional area(s) of a tube.
 #[derive(Clone, Debug)]
@@ -95,6 +95,23 @@ impl Tube {
     }
 }
 
+/// A soft partition between two nodes (the soft palate between the mouth and the nasal cavity):
+/// a mass–spring–damper per unit area driven by the pressure difference across it. Its motion
+/// takes volume from one side and gives it to the other, so sound passes through it even with
+/// no air path (the transpalatal path of oral vowels into the nose).
+#[derive(Clone, Copy, Debug)]
+pub struct Membrane {
+    pub a: usize,
+    pub b: usize,
+    /// moving area (cm²)
+    pub area: f64,
+    pub wall: WallParams,
+    v: f64,
+    y: f64,
+    /// volume velocity a → b (telemetry)
+    pub u: f64,
+}
+
 const KIND_SERIES: u8 = 0; // inertance from adjacent half-sections
 const KIND_PORT: u8 = 1; // own duct (area, length) in series with adjacent half-sections
 
@@ -148,8 +165,12 @@ pub struct LinearElements {
     pub b: Vec<usize>,
     pub l: Vec<f64>,
     pub r: Vec<f64>,
+    /// series elastance per branch (a membrane's stiffness), 0 for ducts: Z = R + j(ωL − E/ω)
+    pub e: Vec<f64>,
     pub open: Vec<bool>,
     pub c: Vec<f64>,
+    /// shunt conductance per node (thermal boundary layer), 0 when off
+    pub g: Vec<f64>,
     pub wall_area: Vec<f64>,
     pub wall_m: Vec<f64>,
     pub wall_r: Vec<f64>,
@@ -270,6 +291,9 @@ pub struct AirwayNetwork {
     wall_perim: Vec<f64>,
     wall_rad: Vec<f64>,
     has_wall: Vec<bool>,
+    /// fraction of each node's perimeter that yields (the rest is bone or teeth); 1 by default
+    wall_soft: Vec<f64>,
+    membranes: Vec<Membrane>,
     pub wall_y: Vec<f64>,
     wall_v: Vec<f64>,
     /// per-node wall volume velocity (telemetry)
@@ -325,8 +349,44 @@ pub struct AirwayNetwork {
     pub viscous_omega: f64,
     /// scale on turbulence noise gain
     pub noise_scale: f64,
+    /// add the evanescent-mode inertance of abrupt area changes between sections
+    /// (`discontinuity_inertance`); off, a step between sections is a plain junction
+    pub discontinuity: bool,
+    /// thermal boundary-layer loss at the walls (a shunt conductance per node, at
+    /// `viscous_omega` like the viscous loss); off, the walls conduct no heat
+    pub thermal: bool,
     /// last output sample (radiated pressure derivative)
     pub out: f64,
+}
+
+/// Inertance (dyn·s²/cm⁵) of the evanescent higher-order modes at an abrupt change of
+/// cross-section, between sections whose areas have square roots `sa` and `sb`: the length
+/// correction of a step between coaxial circular tubes, δ = 0.82·r·(1 − 1.35·α + 0.31·α³) with
+/// α = r/R the ratio of the radii (Kergomard & Garcia 1987), as the inertance ρ·δ/(πr²) of the
+/// narrower tube. It vanishes for α ≳ 0.9, so a smooth taper sampled finely adds nothing; a narrow
+/// neck opening into a cavity (the /i/ and /u/ constrictions, the rounded lips) gains the mass of
+/// air its flow drags beyond the neck, which a plane-wave tube leaves out and which lowers F1.
+#[inline]
+pub fn discontinuity_inertance(sa: f64, sb: f64) -> f64 {
+    let (s, l) = if sa < sb { (sa, sb) } else { (sb, sa) };
+    if s <= 1e-3 || l <= 0.0 {
+        return 0.0;
+    }
+    let al = s / l;
+    let f = 1.0 - 1.35 * al + 0.31 * al * al * al;
+    if f <= 0.0 {
+        return 0.0;
+    }
+    // r = s/√π: ρ·0.82·r·f/(π r²) = ρ·0.82·f/(√π·s)
+    RHO * 0.82 * f / (SQRT_PI * s)
+}
+const SQRT_PI: f64 = 1.772_453_850_905_516;
+
+/// Shunt conductance per unit wall area (cm³/(dyn·s) per cm²) of the thermal boundary layer at
+/// angular frequency `omega`: (γ−1)/(ρc²)·√(κω/2), κ the thermal diffusivity (Kirchhoff;
+/// Flanagan 1972, eq. 3.33). With the viscous loss it sets the bandwidths of a rigid tube.
+pub fn thermal_conductance(omega: f64) -> f64 {
+    (GAMMA - 1.0) / RHO_C2 * sqrt(KAPPA * omega / 2.0)
 }
 
 impl AirwayNetwork {
@@ -380,6 +440,8 @@ impl AirwayNetwork {
             wall_perim: Vec::new(),
             wall_rad: Vec::new(),
             has_wall: Vec::new(),
+            wall_soft: Vec::new(),
+            membranes: Vec::new(),
             wall_y: Vec::new(),
             wall_v: Vec::new(),
             wall_u: Vec::new(),
@@ -419,6 +481,8 @@ impl AirwayNetwork {
             viscous_scale: 1.0,
             viscous_omega: 2.0 * PI * 700.0,
             noise_scale: 1.0,
+            discontinuity: false,
+            thermal: false,
             out: 0.0,
         }
     }
@@ -513,6 +577,7 @@ impl AirwayNetwork {
         self.wall_perim = zf(n);
         self.wall_rad = zf(n);
         self.has_wall = vec![false; n];
+        self.wall_soft = vec![1.0; n];
         self.wall_y = zf(n);
         self.wall_v = zf(n);
         self.wall_u = zf(n);
@@ -648,6 +713,31 @@ impl AirwayNetwork {
         }
     }
 
+    /// Control rate: a node's wall tissue and the fraction of its perimeter that yields. Only
+    /// nodes whose tube was built with a wall move.
+    pub fn set_node_wall(&mut self, node: usize, w: WallParams, soft: f64) {
+        self.wall_m[node] = w.mass;
+        self.wall_r[node] = w.resistance;
+        self.wall_k[node] = w.stiffness;
+        self.wall_soft[node] = soft.clamp(0.0, 1.0);
+    }
+
+    /// A soft partition of `area` cm² between nodes `a` and `b` (see `Membrane`). Returns its index.
+    pub fn add_membrane(&mut self, a: usize, b: usize, area: f64, wall: WallParams) -> usize {
+        self.membranes.push(Membrane { a, b, area, wall, v: 0.0, y: 0.0, u: 0.0 });
+        self.membranes.len() - 1
+    }
+
+    /// Control rate: a membrane's moving area and tissue.
+    pub fn set_membrane(&mut self, i: usize, area: f64, wall: WallParams) {
+        self.membranes[i].area = area;
+        self.membranes[i].wall = wall;
+    }
+
+    pub fn membrane(&self, i: usize) -> &Membrane {
+        &self.membranes[i]
+    }
+
     pub fn set_node_area_target(&mut self, node: usize, area: f64) {
         self.area_target[node] = js_max(0.0, area);
         self.amin_target[node] = self.area_target[node];
@@ -753,6 +843,9 @@ impl AirwayNetwork {
             if self.wall_y[k].abs() < 1e-12 {
                 self.wall_y[k] = 0.0;
             }
+        }
+        for mb in self.membranes.iter_mut() {
+            mb.v = 0.0;
         }
         self.u.fill(0.0);
         self.mom.fill(0.0);
@@ -877,6 +970,8 @@ impl AirwayNetwork {
             let inv_amin = &self.inv_amin[..n];
             let half_l = &self.half_l[..n];
             let half_r = &self.half_r[..n];
+            let sqrt_a = &self.sqrt_a[..n];
+            let disc = self.discontinuity;
             let is_j = &self.is_junction[..n];
             let p = &self.p[..n];
             let flow_sum = &mut self.flow_sum[..n];
@@ -908,7 +1003,7 @@ impl AirwayNetwork {
                     }
                     let ia = inv_a[a];
                     let ib = inv_a[b];
-                    l = half_rho * (half_l[a] + half_l[b]);
+                    l = if disc { half_rho * (half_l[a] + half_l[b]) + discontinuity_inertance(sqrt_a[a], sqrt_a[b]) } else { half_rho * (half_l[a] + half_l[b]) };
                     // viscous: R = S·l/A² · sqrt(ρμω/2) with S = perimeter of each half-section
                     r = 0.5 * visc * (half_r[a] + half_r[b]);
                     // Borda–Carnot: the jet leaving the narrowest point of the upstream node expands into
@@ -1004,14 +1099,25 @@ impl AirwayNetwork {
             self.wall_v[k] = v;
             self.wall_y[k] += t * v;
             let sa = if self.area[k] > min_a { self.sqrt_a[k] } else { sqrt(min_a) };
-            let uw = self.wall_perim[k] * sa * self.dx[k] * v;
+            let uw = self.wall_perim[k] * self.wall_soft[k] * sa * self.dx[k] * v;
             self.wall_u[k] = uw;
             self.flow_sum[k] -= uw;
             wall_rad_sum += uw * self.wall_rad[k];
         }
+        for mb in self.membranes.iter_mut() {
+            let (m, r) = (mb.wall.mass, mb.wall.resistance);
+            let v = ((m * inv_t - 0.5 * r) * mb.v + self.p[mb.a] - self.p[mb.b] - mb.wall.stiffness * mb.y) / (m * inv_t + 0.5 * r);
+            mb.v = v;
+            mb.y += t * v;
+            let u = mb.area * v;
+            mb.u = u;
+            self.flow_sum[mb.a] -= u;
+            self.flow_sum[mb.b] += u;
+        }
 
-        // 5) nodes (radiation loads handled semi-implicitly)
+        // 5) nodes (radiation loads handled semi-implicitly; the thermal conductance trapezoidal)
         let t2 = t * t;
+        let therm = if self.thermal { thermal_conductance(self.viscous_omega) } else { 0.0 };
         let mut rad_total = wall_rad_sum;
         let cl = self.closed_area;
         for k in 0..n {
@@ -1059,8 +1165,14 @@ impl AirwayNetwork {
                 }
             }
             let r = self.rad_of[k];
+            // thermal loss: G = S·Δ·g (S the perimeter); 0 when off, leaving the update exact
+            let gt = if therm > 0.0 { 0.5 * therm * self.wall_perim[k] * self.sqrt_a[k] * self.dx[k] } else { 0.0 };
             if r < 0 {
-                self.p[k] += (t / c) * self.flow_sum[k];
+                if gt > 0.0 {
+                    self.p[k] = (self.p[k] * (c * inv_t - gt) + self.flow_sum[k]) / (c * inv_t + gt);
+                } else {
+                    self.p[k] += (t / c) * self.flow_sum[k];
+                }
             } else {
                 let r = r as usize;
                 let a = if self.area[k] > 1e-4 { self.area[k] } else { 1e-4 };
@@ -1078,7 +1190,7 @@ impl AirwayNetwork {
                 // conserving for the reactive part): Lr ∝ A^-½ against C ∝ A makes the explicit form
                 // unstable at small apertures. U_L lives at integer steps; the node sees its mean.
                 let h = t / (2.0 * lr);
-                let g = 0.5 / rr;
+                let g = 0.5 / rr + gt;
                 let p_new = (p_old * (c * inv_t - 0.5 * h - g) + self.flow_sum[k] - ul_prev) / (c * inv_t + 0.5 * h + g);
                 self.p[k] = p_new;
                 let ul = ul_prev + h * (p_old + p_new);
@@ -1144,9 +1256,26 @@ impl AirwayNetwork {
         let visc = sqrt((RHO * MU * self.viscous_omega) / 2.0) * self.viscous_scale;
         let a_t = &self.area_target;
         let dx = &self.dx_target;
-        let mut l = vec![0.0; nb];
-        let mut r = vec![0.0; nb];
-        let mut open = vec![false; nb];
+        let nm = self.membranes.len();
+        let mut l = vec![0.0; nb + nm];
+        let mut r = vec![0.0; nb + nm];
+        let mut e = vec![0.0; nb + nm];
+        let mut open = vec![false; nb + nm];
+        let mut ba = self.b_a.clone();
+        let mut bb = self.b_b.clone();
+        // membranes as branches after the network's own: per unit area Δp = (R + jωM + K/(jω))·v
+        // and U = S·v, so the acoustic impedance is that over S
+        for (i, mb) in self.membranes.iter().enumerate() {
+            let s = mb.area;
+            if s > 0.0 {
+                open[nb + i] = true;
+                l[nb + i] = mb.wall.mass / s;
+                r[nb + i] = mb.wall.resistance / s;
+                e[nb + i] = mb.wall.stiffness / s;
+            }
+            ba.push(mb.a);
+            bb.push(mb.b);
+        }
         for j in 0..nb {
             let a = self.b_a[j];
             let b = self.b_b[j];
@@ -1158,6 +1287,9 @@ impl AirwayNetwork {
                 }
                 open[j] = true;
                 l[j] = 0.5 * RHO * (dx[a] * ia + dx[b] * ib);
+                if self.discontinuity {
+                    l[j] += discontinuity_inertance(sqrt(js_max(a_t[a], 1e-6)), sqrt(js_max(a_t[b], 1e-6)));
+                }
                 r[j] = 0.5 * visc * (self.wall_perim[a] * dx[a] * sqrt(a_t[a]) * ia * ia * self.visc_f[a] + self.wall_perim[b] * dx[b] * sqrt(a_t[b]) * ib * ib * self.visc_f[b]);
             } else {
                 let ap = self.port_area_target[j];
@@ -1173,21 +1305,26 @@ impl AirwayNetwork {
             }
         }
         let mut c = vec![0.0; n];
+        let mut g = vec![0.0; n];
         let mut wall_area = vec![0.0; n];
+        let therm = if self.thermal { thermal_conductance(self.viscous_omega) } else { 0.0 };
         for k in 0..n {
             let a = js_max(a_t[k], self.min_node_area);
             c[k] = (a * dx[k]) / RHO_C2;
-            wall_area[k] = if self.has_wall[k] { self.wall_perim[k] * sqrt(a) * dx[k] } else { 0.0 };
+            g[k] = therm * self.wall_perim[k] * sqrt(js_max(a_t[k], 0.0)) * dx[k];
+            wall_area[k] = if self.has_wall[k] { self.wall_perim[k] * self.wall_soft[k] * sqrt(a) * dx[k] } else { 0.0 };
         }
         LinearElements {
             n_nodes: n,
-            n_branches: nb,
-            a: self.b_a.clone(),
-            b: self.b_b.clone(),
+            n_branches: nb + nm,
+            a: ba,
+            b: bb,
             l,
             r,
+            e,
             open,
             c,
+            g,
             wall_area,
             wall_m: self.wall_m.clone(),
             wall_r: self.wall_r.clone(),
@@ -1212,6 +1349,11 @@ impl AirwayNetwork {
         self.l_prev.fill(0.0);
         self.wall_y.fill(0.0);
         self.wall_v.fill(0.0);
+        for mb in self.membranes.iter_mut() {
+            mb.v = 0.0;
+            mb.y = 0.0;
+            mb.u = 0.0;
+        }
         self.rad_ul.fill(0.0);
         self.rad_l_prev.fill(0.0);
         self.rad_prev_total = 0.0;

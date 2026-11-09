@@ -86,7 +86,11 @@ export class Expression {
     const voiced = !!t && t.voicing > 0.45 && t.gate > 0.3 && t.f0 > 30 && t.outRms > 0.004;
 
     // ---- cheeks
-    const puffTo = tele ? smooth(1.5, 7.0, mouthPressure(tele)) : 0;
+    // full puff from 5.5 cmH₂O: with yielding tissue walls a voiced /b/ holds ~4.3 cmH₂O behind
+    // the lips and /p/ ~6.9 (voiceless stops hold more than voiced, as measured in speakers:
+    // Arkebauer, Hixon & Hardy 1967, doi:10.1044/jshr.1002.196); the stiff walls before held
+    // both at the lungs' ~8.6, which the old 7 cmH₂O end was set for
+    const puffTo = tele ? smooth(1.5, 5.5, mouthPressure(tele)) : 0;
     this.puff = clamp(this.cheeks.step(puffTo, dt), -0.35, 1.25);
 
     // ---- pitch: brows follow the pitch above or below where it has been lately
