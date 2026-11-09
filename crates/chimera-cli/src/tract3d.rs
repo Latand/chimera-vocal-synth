@@ -149,15 +149,20 @@ struct Posture {
 fn spec(key: &str) -> &'static chimera::anatomy::tract3d::ParamSpec {
     SPECS.iter().find(|s| s.key == key).expect("known key")
 }
-/// Narrowest opening (cm, across the cut's air) the comparison can resolve: the reference's
-/// voxels are 0.5 mm and the MRI's own 1.2 mm, so a thinner slit would vanish from the model's
-/// voxels while the fast slicer still counts it.
-const RESOLVED: f64 = 0.1;
+/// Thinnest opening (cm) the comparison resolves: the reference pipeline traces its centreline
+/// on a 1 mm grid (0.5 mm voxels, every other one; the MRI's own voxels are 1.2 mm), so a slit
+/// thinner than this disconnects the model's voxels while the fast slicer still counts it.
+const RESOLVED: f64 = 0.15;
 /// Fast objective: area-function distance, tract length and cut proportions at six stations,
-/// and a penalty for openings the voxel pipeline cannot resolve (closed or thinner than 1 mm).
+/// and a penalty for openings the voxel pipeline cannot resolve (closed or thinner than 1.5 mm).
 fn objective(f: &Tract3dFrame, r: &Measurement, rs: &[f64], ra: &[f64]) -> f64 {
     let d = distance(rs, ra, &f.area_fn.s, &f.area_fn.area);
-    let unresolved: f64 = f.cuts().iter().map(|c| if c.area <= 0. { 1. } else { (RESOLVED - c.height).max(0.) / RESOLVED }).sum();
+    // hydraulic thickness 2A/P: a slit l × t gives t whichever way it runs, a disc its radius
+    let unresolved: f64 = f
+        .cuts()
+        .iter()
+        .map(|c| if c.area <= 0. || c.perimeter <= 0. { 1. } else { (RESOLVED - 2. * c.area / c.perimeter).max(0.) / RESOLVED })
+        .sum();
     let length = (f.area_fn.length / r.length).ln().abs();
     let mut shape = 0.;
     for fraction in [0.15, 0.3, 0.45, 0.6, 0.75, 0.9] {
