@@ -2,9 +2,14 @@
 use super::lamina::Lamina;
 use super::*;
 use serde::ser::{SerializeStruct, Serializer};
-const MAX_INTERVALS: usize = 16;
+pub const MAX_INTERVALS: usize = 16;
+/// laminae, at `Z_STEP` × body scale apart, centred on the midline
 pub const ROWS: usize = 65;
 pub const Z_STEP: f64 = 0.1;
+/// Half-height (cm, along u) of the band a region must enter to count, as in the MRI reference.
+pub const BAND: f64 = 0.6;
+/// Half-width (cm) of that band laterally.
+pub const BAND_Z: f64 = 3.0;
 #[derive(Clone, Copy, Debug, Default, Serialize)]
 pub struct Interval {
     pub lo: f64,
@@ -89,8 +94,24 @@ struct Event {
 pub fn intervals(l: &Lamina, o: Vec2, u: Vec2, row: &mut Row) {
     let mut events = [Event::default(); 1024];
     let mut n = 0;
+    let nair = l.air.len();
     for (polys, tissue) in [(&l.air, false), (&l.tissue, true)] {
         for (poly_index, poly) in polys.iter().enumerate() {
+            if poly.len() < 3 {
+                continue;
+            }
+            // skip polygons whose box lies wholly on one side of the line
+            let b = l.bbox[poly_index + if tissue { nair } else { 0 }];
+            let mut pos = false;
+            let mut neg = false;
+            for c in [v(b[0], b[1]), v(b[2], b[1]), v(b[0], b[3]), v(b[2], b[3])] {
+                let side = u.x * (c.y - o.y) - u.y * (c.x - o.x);
+                pos |= side >= 0.;
+                neg |= side < 0.;
+            }
+            if !(pos && neg) {
+                continue;
+            }
             let mut ts = [0.; 256];
             let mut nt = 0;
             for i in 0..poly.len() {
@@ -158,37 +179,44 @@ fn root(parent: &[usize], mut i: usize) -> usize {
     }
     i
 }
-/// Integrate strips and label connected regions. Hard band matches the reference pipeline;
-/// weighted area has a 3 mm fade for the future acoustic consumer.
-pub fn measure(laminae: &[Lamina], o: Vec2, u: Vec2, out: &mut Cut) {
+/// Rows of air along the line o + a·u in every lamina, then regions entering the band
+/// (|a| ≤ `band`, |z| ≤ `BAND_Z`); `band` = ∞ keeps every region (whole anatomical planes).
+/// The weighted area fades regions out over 3 mm beyond the band, for the future acoustics.
+pub fn measure(laminae: &[Lamina], symmetric: bool, o: Vec2, u: Vec2, band: f64, out: &mut Cut) {
     out.origin = o;
     out.u = norm(u);
     out.rows.clear();
     out.regions.clear();
+    let mid = laminae.len() / 2;
     for l in laminae {
-        let mut r = Row {
-            z: l.z,
-            ..Row::default()
-        };
-        intervals(l, o, out.u, &mut r);
-        out.rows.push(r);
+        out.rows.push(Row { z: l.z, ..Row::default() });
     }
-    finish(out, 0.6);
+    for (i, l) in laminae.iter().enumerate() {
+        if symmetric && i < mid {
+            continue;
+        }
+        intervals(l, o, out.u, &mut out.rows[i]);
+    }
+    if symmetric {
+        for i in 0..mid {
+            let (lo, hi) = out.rows.split_at_mut(mid);
+            let src = &hi[laminae.len() - 1 - i - mid];
+            lo[i].intervals = src.intervals;
+            lo[i].count = src.count;
+        }
+    }
+    finish(out, band);
 }
-pub fn measure_plane(laminae: &[Lamina], o: Vec2, u: Vec2, out: &mut Cut) {
-    out.origin = o;
-    out.u = norm(u);
-    out.rows.clear();
-    out.regions.clear();
-    for l in laminae {
-        let mut r = Row {
-            z: l.z,
-            ..Row::default()
-        };
-        intervals(l, o, out.u, &mut r);
-        out.rows.push(r);
+/// Smallest region (cm²) a cut keeps.
+pub const MIN_REGION: f64 = 0.01;
+fn row_dz(rows: &[Row], k: usize) -> f64 {
+    if k == 0 {
+        (rows[1].z - rows[0].z) * 0.5
+    } else if k + 1 == rows.len() {
+        (rows[k].z - rows[k - 1].z) * 0.5
+    } else {
+        (rows[k + 1].z - rows[k - 1].z) * 0.5
     }
-    finish(out, f64::INFINITY);
 }
 pub fn finish(out: &mut Cut, band: f64) {
     const N: usize = ROWS * MAX_INTERVALS;
@@ -203,7 +231,7 @@ pub fn finish(out: &mut Cut, band: f64) {
             let r = out.rows[k].intervals[j];
             let id = k * MAX_INTERVALS + j;
             nearest[id] = r.lo.max(-r.hi).max(0.);
-            near[id] = nearest[id] <= band && (band.is_infinite() || out.rows[k].z.abs() <= 3.);
+            near[id] = nearest[id] <= band && (band.is_infinite() || out.rows[k].z.abs() <= BAND_Z);
             if k > 0 {
                 for b in 0..out.rows[k - 1].count {
                     let q = out.rows[k - 1].intervals[b];
@@ -227,8 +255,23 @@ pub fn finish(out: &mut Cut, band: f64) {
             weight[r] = weight[r].max(if band.is_infinite() {
                 1.
             } else {
-                1. - smoothstep(0.6, 0.9, nearest[i])
+                1. - smoothstep(band, band + 0.3, nearest[i])
             });
+        }
+    }
+    // Regions under MIN_REGION are one-lamina slivers between stepped surfaces (a tongue margin
+    // against a tooth row), far below MRI resolution; they stay in the weighted area only.
+    let mut comp = [0f64; N];
+    for k in 0..out.rows.len() {
+        let dz = row_dz(&out.rows, k);
+        for j in 0..out.rows[k].count {
+            let q = out.rows[k].intervals[j];
+            comp[root(&parents, k * MAX_INTERVALS + j)] += (q.hi - q.lo) * dz;
+        }
+    }
+    for i in 0..N {
+        if keep[i] && comp[i] < MIN_REGION {
+            keep[i] = false;
         }
     }
     let mut ids = [usize::MAX; N];
@@ -244,13 +287,7 @@ pub fn finish(out: &mut Cut, band: f64) {
         f64::NEG_INFINITY,
     );
     for k in 0..out.rows.len() {
-        let dz = if k == 0 {
-            (out.rows[1].z - out.rows[0].z) * 0.5
-        } else if k + 1 == out.rows.len() {
-            (out.rows[k].z - out.rows[k - 1].z) * 0.5
-        } else {
-            (out.rows[k + 1].z - out.rows[k - 1].z) * 0.5
-        };
+        let dz = row_dz(&out.rows, k);
         let row = &mut out.rows[k];
         let mut count = 0;
         for j in 0..row.count {
@@ -298,15 +335,7 @@ pub fn finish(out: &mut Cut, band: f64) {
         out.width = zhi - zlo;
         out.height = uhi - ulo;
         for r in &mut out.regions {
-            r.tag = if r.min_z <= 0. && r.max_z >= 0. {
-                "main"
-            } else if out.origin.y < 2.5 {
-                "piriform"
-            } else if out.origin.y < 4.5 {
-                "vallecula"
-            } else {
-                "lateral"
-            };
+            r.tag = if r.min_z <= 0. && r.max_z >= 0. { "main" } else if r.max_z < 0. { "left" } else { "right" };
         }
     }
     // Vertical changes of interval endpoints, including births and deaths, complete the boundary.
@@ -327,6 +356,7 @@ pub fn finish(out: &mut Cut, band: f64) {
 
 #[cfg(test)]
 mod tests {
+    use super::super::lamina::station;
     use super::*;
     #[test]
     fn circular_tube_area_and_disconnected_channels() {
@@ -338,15 +368,17 @@ mod tests {
             if h > 0. {
                 l.air[0] = vec![v(-h, -1.), v(h, -1.), v(h, 1.), v(-h, 1.)];
             }
+            l.bound();
         }
         let mut c = Cut::default();
-        measure(&ls, v(0., 0.), v(1., 0.), &mut c);
+        measure(&ls, false, v(0., 0.), v(1., 0.), BAND, &mut c);
         assert!((c.area - PI).abs() / PI < 0.01, "{}", c.area);
         assert_eq!(c.channels, 1);
         for l in &mut ls {
             l.tissue[0] = vec![v(-2., -1.), v(2., -1.), v(2., 1.), v(-2., 1.)];
+            l.bound();
         }
-        measure(&ls, v(0., 0.), v(1., 0.), &mut c);
+        measure(&ls, false, v(0., 0.), v(1., 0.), BAND, &mut c);
         assert_eq!(c.area, 0.);
         assert_eq!(c.channels, 0);
         for l in &mut ls {
@@ -354,8 +386,9 @@ mod tests {
             if l.z.abs() < 0.3 {
                 l.air[0].clear();
             }
+            l.bound();
         }
-        measure(&ls, v(0., 0.), v(1., 0.), &mut c);
+        measure(&ls, false, v(0., 0.), v(1., 0.), BAND, &mut c);
         assert_eq!(c.channels, 2);
     }
     #[test]

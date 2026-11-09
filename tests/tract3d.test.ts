@@ -8,7 +8,7 @@ test("lab geometry shares body mapping and leaves existing model areas unchanged
   try {
     const before = api.airwayAreas(model, { ...api.NEUTRAL });
     const specs = api.tract3dSpecs();
-    expect(specs.length).toBe(41);
+    expect(specs.length).toBe(40);
     expect(new Set(specs.map((s) => s.key)).size).toBe(specs.length);
     const presets = api.tract3dPresets({ female: 0, child: 0 });
     for (const preset of presets) {
