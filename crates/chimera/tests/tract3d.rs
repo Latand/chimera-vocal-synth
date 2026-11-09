@@ -263,3 +263,22 @@ fn bunched_r_is_an_open_approximant() {
     let open = checks.iter().find(|c| c.feature == "open along its whole length").expect("the open-path check");
     assert!(!open.pass, "a closed tract passed as a bunched /ɹ/: {}", open.measured);
 }
+
+/// Review finding: the lips' opening could not get narrower than 1.1 cm, so rounded vowels were
+/// fitted with a wide, thin slit. `lipRound` draws the corners in.
+#[test]
+fn lip_rounding_narrows_the_opening() {
+    let all = presets(BodyMix::MALE);
+    let u = all.iter().find(|p| p.name == "u").unwrap();
+    let mut m = Tract3d::new(BODY_MALE);
+    let mut f = Tract3dFrame::default();
+    m.compute(&u.artic, &ShapeParams::default(), &mut f).unwrap();
+    let wide = f.cuts().last().unwrap().width;
+    let floor = m.parts.lip_w;
+    m.compute(&u.artic, &ShapeParams { lip_round: 1., ..ShapeParams::default() }, &mut f).unwrap();
+    let narrow = f.cuts().last().unwrap().width;
+    assert!((m.parts.lip_w / floor - 0.35).abs() < 1e-9, "{} vs {floor}", m.parts.lip_w);
+    assert!(narrow < 0.6 * wide, "the last cut is {narrow} cm wide with the lips rounded, {wide} without");
+    // without it nothing changes: the default leaves the engine's own opening
+    assert_eq!(ShapeParams::default().lip_round, 0.);
+}

@@ -294,7 +294,9 @@ impl Parts {
         self.upper = Arch::new(UPPER_INCISOR_X, ARCH_DEPTH, s.arch_width, s.arch_taper);
         self.lower = Arch::new(LOWER_INCISOR_X, ARCH_DEPTH - 0.2, s.lower_arch_width, s.arch_taper);
         let lw = self.body.lip_width;
-        self.lip_w = 0.5 * (1.1 + (lw - 1.1) * a.lip_width.clamp(0., 1.)) * k;
+        // the engine's opening is at least 1.1 cm wide; rounded lips draw their corners in
+        // further (MRI of /u y/ shows openings about 0.5 cm across), which `lipRound` allows
+        self.lip_w = 0.5 * (1.1 + (lw - 1.1) * a.lip_width.clamp(0., 1.)) * (1. - 0.65 * s.lip_round) * k;
         let ul_edge = *self.upper_lip.last().unwrap();
         let ll_edge = *self.lower_front.last().unwrap();
         self.ap = ul_edge.y - ll_edge.y;

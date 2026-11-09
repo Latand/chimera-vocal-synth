@@ -99,6 +99,7 @@ shape_params! {
     vallecula_width, "valleculaWidth", "larynx", "cm", 0.3, 1.0, 0.7, "Lateral radius of the valleculae";
     lip_corner_shape, "lipCornerShape", "lips", "", 1.0, 4.0, 2.0, "Mouth opening outline: low a lens (spread), 2 an ellipse, high square";
     lip_thickness, "lipThickness", "lips", "×", 0.6, 1.6, 1.0, "Lip depth front to back";
+    lip_round, "lipRound", "lips", "", 0.0, 1.0, 0.0, "Rounding: the corners drawn in beyond what Lip spread gives (a narrower, rounder opening)";
     lower_arch_width, "lowerArchWidth", "teethJaw", "cm", 1.3, 2.5, 1.8, "Inner half-width of the lower dental arch at the molars";
     buccal_gap, "buccalGap", "cheeks", "cm", 0.0, 0.6, 0.0, "Air between the teeth and the cheeks (vestibule)";
     cheek_puff, "cheekPuff", "cheeks", "", 0.0, 1.0, 0.0, "Puffed cheeks: widens the vestibule";
