@@ -211,9 +211,8 @@ const ring = new Float64Array(NV).fill(99);
 /**
  * MakeHuman: dm, x to the figure's left, y up, z forward. Engine: cm, x forward, y up, z to the
  * speaker's right. The registration, in the sagittal plane, per body:
- *  - a scale that gives the head a real adult's breadth (the base mesh's head is 17.7 cm wide,
- *    about a tenth larger than life), the same template breadth for the three bodies (the
- *    runtime scales the head with the body, as the engine scales the tract);
+ *  - a scale that gives the skull a real adult's breadth, the same template breadth for the three
+ *    bodies (the runtime scales the head with the body, as the engine scales the tract);
  *  - a backward tilt about the mouth, which brings the throat forward under the jaw;
  *  - the point where the lips meet goes to the engine's closed lips;
  *  - below the jaw, a forward shift of the neck that puts its front SKIN_FRONT cm in front of the
