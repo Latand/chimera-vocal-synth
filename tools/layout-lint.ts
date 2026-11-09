@@ -1,7 +1,7 @@
 /**
  * Layout lint: a smoke test of the layout. Loads every mode at phone, tablet and desktop sizes in
  * headless Chromium, before and after audio starts, then some alternate states (every encoder page,
- * every creature, the 3D face, a phrase being spoken) and the duet page (`?show=`, with a short
+ * every creature, the 3D head whole and the flat face view, a phrase being spoken) and the duet page (`?show=`, with a short
  * duet it renders first), and fails on mistakes screenshot reviews kept missing:
  *
  *  - overlap     two pieces of text or controls drawn over each other (DOM text, buttons, inputs,
@@ -335,10 +335,15 @@ async function main() {
       await check(`${m} (running)`);
       await pages(`${m} (running)`);
       if (m === "play") {
-        // the 3D face lays its readouts out on its own
-        await page.locator(".view-toggles .toggle", { hasText: "3D" }).click();
-        await check("play (running), 3D", 2500);
-        await page.locator(".view-toggles .toggle", { hasText: "3D" }).click();
+        // the face screen opens on the 3D head, cut open; the whole head and the flat view (which
+        // has toggles of its own) lay their readouts out again
+        const toggle = (label: string) => page.locator(".view-toggles .toggle", { hasText: label }).click();
+        await toggle("Cut away");
+        await check("play (running), whole head", 2500);
+        await toggle("Cut away");
+        await toggle("3D");
+        await check("play (running), flat view", 1200);
+        await toggle("3D");
       }
       if (m === "speak") {
         // the gestural score with a phrase in it, mid-utterance
