@@ -247,17 +247,9 @@ pub fn finish(out: &mut Cut, band: f64) {
         }
     }
     let mut keep = [false; N];
-    let mut weight = [0f64; N];
     for i in 0..out.rows.len() * MAX_INTERVALS {
         let r = root(&parents, i);
         keep[r] |= near[i];
-        if nearest[i].is_finite() {
-            weight[r] = weight[r].max(if band.is_infinite() {
-                1.
-            } else {
-                1. - smoothstep(band, band + 0.3, nearest[i])
-            });
-        }
     }
     // Regions under MIN_REGION are one-lamina slivers between stepped surfaces (a tongue margin
     // against a tooth row), far below MRI resolution; they stay in the weighted area only.
@@ -293,7 +285,11 @@ pub fn finish(out: &mut Cut, band: f64) {
         for j in 0..row.count {
             let mut q = row.intervals[j];
             let rt = root(&parents, k * MAX_INTERVALS + j);
-            out.weighted_area += (q.hi - q.lo) * dz * weight[rt];
+            // the faded area weighs each interval by its own distance from the band: a region's
+            // weight taken from its nearest interval jumped when a pocket beside the tongue lost
+            // its last overlapping lamina (a yes/no connection), 0.86 cm² at once
+            let own = if band.is_infinite() { 1. } else { 1. - smoothstep(band, band + 0.3, nearest[k * MAX_INTERVALS + j]) };
+            out.weighted_area += (q.hi - q.lo) * dz * own;
             if !keep[rt] {
                 continue;
             }
