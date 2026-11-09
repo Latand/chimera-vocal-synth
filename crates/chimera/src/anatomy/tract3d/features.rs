@@ -127,7 +127,7 @@ pub fn check_one(m: &Tract3d, f: &Tract3dFrame, name: &str, shape: &ShapeParams,
             push("constriction behind /s/", format!("{:.3} cm² at s/L {at:.2} (/s/ at {s_at:.2})", c.area), "≤ 0.15 cm², further back than /s/ (DVTD 0.10 cm² at 0.79–0.88)", hinge(c.area - 0.15) * 5. + hinge(at - s_at + 0.01) * 5.);
             push("long thin channel behind it", format!("{thin} cuts within 2.5 cm behind, under 0.6 cm high"), "≥ 4 (≥ 1 cm of thin channel)", hinge(4. - thin as f64) * 0.2);
             let g = max_surface_groove(&m.parts, 0.7, 0.97);
-            push("domed blade, not grooved", format!("largest surface concavity {g:.2} cm over the blade"), "≤ 0.05 cm", hinge(g - 0.05));
+            push("domed blade without a groove", format!("largest surface concavity {g:.2} cm over the blade"), "≤ 0.05 cm", hinge(g - 0.05));
         }
         "l" => {
             let c = f.cuts().iter().filter(|c| c.s / l > 0.7 && !c.regions.iter().any(|r| r.min_z <= 0. && r.max_z >= 0.) && c.channels >= 2).max_by(|a, b| a.area.total_cmp(&b.area));
