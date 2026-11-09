@@ -83,7 +83,9 @@ export function LabPanel() {
     }
   }, [model, a, lab.shape, lab.cut, lab.plane, lab.at]);
   // the head around the tract (display only), rebuilt with the posture
-  const head = useMemo(() => (lab.head ? buildHead(model, a) : null), [model, a, lab.head]);
+  // it depends on the jaw, the lips and the larynx only: rebuild when one of them moves
+  const headKey = [a.jaw, a.lipAp, a.lipProt, a.lipWidth, a.labiodental, a.larynx].map((x) => Math.round(x * 400)).join(",");
+  const head = useMemo(() => (lab.head ? buildHead(model, a) : null), [model, headKey, lab.head]);
   const section = useMemo(() => (lab.head && lab.cutaway ? buildSection(model, a) : null), [model, a, lab.head, lab.cutaway]);
   const engineAreas = useMemo(() => {
     const e = model.areas(a);
