@@ -241,6 +241,108 @@ fn the_presets_make_the_tongue_shapes_the_research_lists() {
     assert!(failed.is_empty(), "{failed:#?}");
 }
 
+/// Review finding: the fossae and the pharyngeal wall were drawn from formulas of their own,
+/// which had drifted from the ones the laminae cut (a pocket drawn 3 mm lower than it was sliced).
+/// The drawn surfaces now come from the same `Parts` helpers; this holds them there over
+/// anatomy and posture changes.
+#[test]
+fn drawn_side_cavities_and_walls_are_the_sliced_geometry() {
+    let mut m = Tract3d::new(BODY_MALE);
+    let mut f = Tract3dFrame::default();
+    let shapes = [
+        ShapeParams::default(),
+        ShapeParams { piriform_depth: 2.4, piriform_width: 0.9, epilarynx_width: 0.8, ..ShapeParams::default() },
+        ShapeParams { pharynx_width_oro: 2.2, pharynx_shape: 3.5, lateral_squeeze: 0.4, vallecula_depth: 1.1, ..ShapeParams::default() },
+    ];
+    for p in presets(BodyMix::MALE).iter().filter(|p| ["a", "i", "u", "ə"].contains(&p.name.as_str())) {
+        for shape in &shapes {
+            m.compute(&p.artic, shape, &mut f).unwrap();
+            let pa = &m.parts;
+            let larynx = &m.meshes()[4];
+            // the larynx mesh: the tube (25 × 25), then per side a fossa (11 × 17) and a vallecula (9 × 13)
+            let at = |i: usize| (larynx.positions[3 * i] as f64, larynx.positions[3 * i + 1] as f64, larynx.positions[3 * i + 2] as f64);
+            let mut i = 25 * 25;
+            for side in [-1., 1.] {
+                let (centre, rx, ry) = pa.piriform_ellipse();
+                let (cz, rz) = pa.piriform(side);
+                for _ in 0..11 * 17 {
+                    let (x, y, z) = at(i);
+                    let e = ((x - centre.x) / rx).powi(2) + ((y - centre.y) / ry).powi(2) + ((z - cz) / rz).powi(2);
+                    assert!((e - 1.).abs() < 1e-4, "{}: fossa vertex off the sliced ellipsoid ({e})", p.name);
+                    // it opens into the hypopharynx's floor and is not drawn above it
+                    assert!(y <= pa.bottom + 1e-4, "{}: fossa drawn {} cm above the floor", p.name, y - pa.bottom);
+                    i += 1;
+                }
+                let (centre, rx, ry) = pa.vallecula_ellipse();
+                let (cz, rz) = pa.vallecula(side);
+                for _ in 0..9 * 13 {
+                    let (x, y, z) = at(i);
+                    let e = ((x - centre.x) / rx).powi(2) + ((y - centre.y) / ry).powi(2) + ((z - cz) / rz).powi(2);
+                    assert!((e - 1.).abs() < 1e-4, "{}: vallecula vertex off the sliced ellipsoid ({e})", p.name);
+                    i += 1;
+                }
+            }
+            // the pharyngeal wall's mesh lies on the laminae's own wall, at any lateral offset
+            let wall = &m.meshes()[3];
+            for j in 0..wall.positions.len() / 3 {
+                let (x, y, z) = (wall.positions[3 * j] as f64, wall.positions[3 * j + 1] as f64, wall.positions[3 * j + 2] as f64);
+                // (at the very edge the corner's profile is vertical: single precision moves it)
+                if z.abs() > 0.9 * pa.pharynx_width(y) {
+                    continue;
+                }
+                let q = pa.wall_point(y, z);
+                assert!((q.x - x).abs() < 1e-4, "{}: wall drawn {} cm off the sliced wall", p.name, x - q.x);
+            }
+        }
+    }
+}
+
+/// The posture alone (`pose`) gives the meshes `compute` gives, and what the head's skin follows:
+/// the lips' meeting line and the jaw's turn.
+#[test]
+fn pose_and_display_agree_with_compute() {
+    let mut full = Tract3d::new(BODY_MALE);
+    let mut light = Tract3d::new(BODY_MALE);
+    let mut f = Tract3dFrame::default();
+    for p in presets(BodyMix::MALE) {
+        full.compute(&p.artic, &p.shape, &mut f).unwrap();
+        light.pose(&p.artic, &p.shape).unwrap();
+        for (a, b) in full.meshes().iter().zip(light.meshes()) {
+            assert_eq!(a.positions, b.positions, "{} {}", p.name, a.element);
+            assert_eq!(a.groups.iter().map(|g| g.count).sum::<u32>() as usize, a.indices.len(), "{}: every triangle has a material", a.element);
+        }
+        let d = light.display(0.);
+        // the section is the midsagittal lamina the cuts read
+        let mid: Vec<_> = full.midsagittal();
+        let section: Vec<_> = d.air.iter().chain(&d.tissue).map(|q| (q.name, q.points.clone())).collect();
+        assert_eq!(mid.len(), section.len(), "{}", p.name);
+        for ((n0, p0), (n1, p1)) in mid.iter().zip(&section) {
+            assert_eq!(n0, n1);
+            assert_eq!(p0.len(), p1.len());
+            assert!(p0.iter().zip(p1).all(|(a, b)| (a.x - b.x).abs() < 1e-12 && (a.y - b.y).abs() < 1e-12), "{} {n0}", p.name);
+        }
+        // the lips' line: on the midline the engine's own lip edges when they are apart, one
+        // line when they are shut; from the corners out the two lips coincide
+        let (ul, ll) = (*full.parts.upper_lip.last().unwrap(), *full.parts.lower_front.last().unwrap());
+        let gap = d.lips.upper[0].y - d.lips.lower[0].y;
+        assert!((gap - (ul.y - ll.y).max(0.)).abs() < 1e-9, "{}: gap {gap} vs {}", p.name, ul.y - ll.y);
+        for (i, z) in d.lips.z.iter().enumerate() {
+            let g = d.lips.upper[i].y - d.lips.lower[i].y;
+            assert!(g >= -1e-12 && g <= gap + 1e-12);
+            if *z >= d.lips.half_width {
+                assert!(g.abs() < 1e-9, "{}: lips apart {g} cm beyond the corner", p.name);
+            }
+        }
+        // the jaw turns about the condyle by what carries the rest incisor to the frame's
+        let k = BODY_MALE.scale;
+        let rest = v(full.tract.p(6.95, 7.75).x - d.jaw.pivot.x, full.tract.p(6.95, 7.75).y - d.jaw.pivot.y);
+        let (c, s) = (d.jaw.angle.cos(), d.jaw.angle.sin());
+        let turned = v(d.jaw.pivot.x + rest.x * c - rest.y * s, d.jaw.pivot.y + rest.x * s + rest.y * c);
+        let tip = full.midline.lower_teeth[2];
+        assert!((turned.x - tip.x).abs() < 1e-6 * k && (turned.y - tip.y).abs() < 1e-6 * k, "{}", p.name);
+    }
+}
+
 /// Review finding: the bunched /ɹ/ pressed its dorsum into the palate and shut the tract over
 /// 2 cm, and the feature check passed it (a closure is "below 60 %" of anything).
 #[test]

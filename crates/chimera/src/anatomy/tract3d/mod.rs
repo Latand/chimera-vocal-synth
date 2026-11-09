@@ -12,13 +12,13 @@ mod presets;
 use super::geom::{add, dist, lerp_v, norm, rotate_about, scale, sub, v, Vec2};
 use super::human::{ArticKey, HumanArtic, HumanBody, HumanFrame, HumanVocalTract};
 use crate::math::{cos, lerp, pow, sin, smoothstep, sqrt, PI};
-pub use cut::{Cut, Interval, Region, Row, MAX_INTERVALS, ROWS, Z_STEP};
-use lamina::{area as poly_area, superellipse, Lamina};
+pub use cut::{Cut, Interval, Region, Row, BAND, BAND_Z, MAX_INTERVALS, MIN_REGION, ROWS, Z_STEP};
+use lamina::{area as poly_area, Lamina};
 pub use lamina::{AIR_PIRIFORM, AIR_VALLECULA};
 pub use features::{check_one, check_presets, groove_index, surface_groove, Check};
-pub use mesh::ElementMesh;
+pub use mesh::{ElementMesh, MeshGroup, TEETH_PER_SIDE};
 pub use params::{derive, derive_with, ParamSpec, ShapeParams, DERIVE, SPECS};
-pub use parts::{occlusal, Arch, Map, Parts, ARCH_DEPTH};
+pub use parts::{occlusal, Arch, Map, Parts, ARCH_DEPTH, CUSP};
 pub use presets::{posture, presets, Preset, PRESET_NAMES};
 use serde::Serialize;
 
@@ -104,6 +104,44 @@ impl Tract3dFrame {
     }
 }
 
+const AIR_NAMES: [&str; lamina::N_AIR] = ["envelope", "tube", "piriform", "piriform", "vallecula", "vallecula"];
+const TISSUE_NAMES: [&str; lamina::N_TISSUE] = ["tongue", "epiglottis", "upperLip", "lowerLip", "upperTeeth", "lowerTeeth", "pharynxWall", "pharynxWall", "fauces", "cheek", "cheek"];
+
+#[derive(Clone, Debug, Serialize)]
+pub struct NamedPolygon {
+    pub name: &'static str,
+    pub points: Vec<Vec2>,
+}
+/// The lips' meeting line from the midline out (z ≥ 0; the lips are symmetric): `upper[i]` and
+/// `lower[i]` are the two lips' edges at lateral offset `z[i]`.
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LipLine {
+    /// half-width of the opening (cm)
+    pub half_width: f64,
+    pub z: Vec<f64>,
+    pub upper: Vec<Vec2>,
+    pub lower: Vec<Vec2>,
+}
+#[derive(Clone, Copy, Debug, Serialize)]
+pub struct JawTurn {
+    /// the condyle (cm) and the jaw's rotation about it from rest (rad, opening negative)
+    pub pivot: Vec2,
+    pub angle: f64,
+}
+#[derive(Clone, Debug, Serialize)]
+pub struct Display {
+    pub lips: LipLine,
+    pub jaw: JawTurn,
+    pub glottis: Vec2,
+    /// the lamina's air polygons (the first is the envelope; the others are air inside tissue)
+    pub air: Vec<NamedPolygon>,
+    /// the lamina's tissue polygons
+    pub tissue: Vec<NamedPolygon>,
+    /// the engine's own midsagittal outlines, for drawing a section's parts
+    pub outlines: Vec<NamedPolygon>,
+}
+
 pub struct Tract3d {
     pub tract: HumanVocalTract,
     pub midline: HumanFrame,
@@ -140,7 +178,9 @@ impl Tract3d {
     pub fn derive(&self, a: &HumanArtic) -> ShapeParams {
         params::derive(a)
     }
-    pub fn compute(&mut self, a: &HumanArtic, offsets: &ShapeParams, out: &mut Tract3dFrame) -> Result<(), String> {
+    /// The midline and every element's rule for a posture, without laminae or cuts: all the
+    /// display needs (`meshes`, `display`). `compute` does this first.
+    pub fn pose(&mut self, a: &HumanArtic, offsets: &ShapeParams) -> Result<(), String> {
         for key in ArticKey::ALL {
             if !a.get(key).is_finite() {
                 return Err(format!("{} must be finite", key.name()));
@@ -150,6 +190,10 @@ impl Tract3d {
         self.shape = self.derive(a).with_offsets(offsets)?;
         self.tract.compute(a, &mut self.midline);
         self.parts.update(&self.tract, &self.midline, a, &self.shape);
+        Ok(())
+    }
+    pub fn compute(&mut self, a: &HumanArtic, offsets: &ShapeParams, out: &mut Tract3dFrame) -> Result<(), String> {
+        self.pose(a, offsets)?;
         self.symmetric = self.shape.side_asym == 0.;
         let mid = ROWS / 2;
         for i in mid..ROWS {
@@ -360,14 +404,51 @@ impl Tract3d {
     pub fn meshes(&self) -> Vec<ElementMesh> {
         mesh::meshes(&self.parts)
     }
+    /// What a view draws beside the meshes, for the posture last given to `pose` or `compute`:
+    /// the lips' meeting line and the jaw's turn (the head's skin follows both), the lamina at
+    /// lateral offset `z` (the cut face of an opened head: the same polygons the cuts read) and
+    /// the engine's own midline outlines.
+    pub fn display(&self, z: f64) -> Display {
+        let k = self.tract.body.scale;
+        let reach = self.parts.lip_w + 1.2 * k;
+        let n = 25;
+        let mut lips = LipLine { half_width: self.parts.lip_w, z: Vec::with_capacity(n), upper: Vec::with_capacity(n), lower: Vec::with_capacity(n) };
+        for i in 0..n {
+            let zz = reach * i as f64 / (n - 1) as f64;
+            let (u, l) = self.parts.lip_edge(zz);
+            lips.z.push(zz);
+            lips.upper.push(u);
+            lips.lower.push(l);
+        }
+        let mut lamina = Lamina::new(z);
+        self.parts.fill(&mut lamina);
+        let named = |names: &[&'static str], polys: &[Vec<Vec2>]| -> Vec<NamedPolygon> {
+            names.iter().zip(polys).filter(|(_, p)| p.len() >= 3).map(|(name, p)| NamedPolygon { name, points: p.clone() }).collect()
+        };
+        let f = &self.midline;
+        Display {
+            lips,
+            jaw: JawTurn { pivot: self.parts.condyle(), angle: self.parts.jaw_angle() },
+            glottis: f.glottis,
+            air: named(&AIR_NAMES, &lamina.air),
+            tissue: named(&TISSUE_NAMES, &lamina.tissue),
+            outlines: vec![
+                NamedPolygon { name: "tongue", points: f.tongue.clone() },
+                NamedPolygon { name: "velum", points: f.velum.clone() },
+                NamedPolygon { name: "upperTeeth", points: f.upper_teeth.clone() },
+                NamedPolygon { name: "lowerTeeth", points: f.lower_teeth.clone() },
+                NamedPolygon { name: "jawBone", points: f.jaw_bone.clone() },
+                NamedPolygon { name: "nasalCavity", points: f.nasal_cavity.clone() },
+            ],
+        }
+    }
     /// The polygons of the z = 0 lamina, named (the engine's own midsagittal outlines).
     pub fn midsagittal(&self) -> Vec<(&'static str, Vec<Vec2>)> {
-        const AIR: [&str; lamina::N_AIR] = ["envelope", "tube", "piriform", "piriform", "vallecula", "vallecula"];
-        const TISSUE: [&str; lamina::N_TISSUE] = ["tongue", "epiglottis", "upperLip", "lowerLip", "upperTeeth", "lowerTeeth", "pharynxWall", "pharynxWall", "fauces", "cheek", "cheek"];
         let l = &self.laminae[ROWS / 2];
-        AIR.iter()
+        AIR_NAMES
+            .iter()
             .zip(&l.air)
-            .chain(TISSUE.iter().zip(&l.tissue))
+            .chain(TISSUE_NAMES.iter().zip(&l.tissue))
             .filter(|(_, p)| !p.is_empty())
             .map(|(n, p)| (*n, p.clone()))
             .collect()

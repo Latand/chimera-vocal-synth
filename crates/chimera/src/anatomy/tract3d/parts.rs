@@ -33,7 +33,7 @@ const BAND_FADE: (f64, f64) = (0.25, 0.45);
 /// template x behind which the oral cavity ends (faucial pillars) and the pharynx begins
 const FAUCES_X: f64 = 1.0;
 /// vertical overlap of upper and lower cusps (template cm)
-const CUSP: f64 = 0.12;
+pub const CUSP: f64 = 0.12;
 
 /// Template → body mapping, identical to `HumanVocalTract::p` (checked by a test).
 #[derive(Clone, Copy, Debug)]
@@ -87,6 +87,16 @@ impl Arch {
         }
         outer[0] = (incisor_x + Self::tooth(0.), 0.);
         Self { incisor_x, depth, width, e, outer }
+    }
+    /// The lingual edge at depth fraction `u` and the unit normal towards the buccal side, both
+    /// as template (x, lateral).
+    pub fn frame(&self, u: f64) -> ((f64, f64), (f64, f64)) {
+        let u = u.max(1e-3);
+        let x = self.incisor_x - self.depth * u;
+        let a = self.width * pow(u, self.e);
+        let da = self.width * self.e * pow(u, self.e - 1.);
+        let n = norm(v(da, self.depth));
+        ((x, a), (n.x, n.y))
     }
     /// crown thickness across the arch (template cm): incisors thin, molars thick
     pub fn tooth(u: f64) -> f64 {
@@ -407,6 +417,13 @@ impl Parts {
     pub fn jaw(&self, x: f64, y: f64) -> Vec2 {
         rotate_about(self.map.p(x, y), self.condyle, self.jaw_phi)
     }
+    /// the jaw's pivot (cm) and its rotation from rest (rad)
+    pub fn condyle(&self) -> Vec2 {
+        self.condyle
+    }
+    pub fn jaw_angle(&self) -> f64 {
+        self.jaw_phi
+    }
     /// half-width (cm) of the pharynx at body height y
     pub fn pharynx_width(&self, y: f64) -> f64 {
         let s = &self.shape;
@@ -521,6 +538,41 @@ impl Parts {
         let w = (z.abs() / self.pharynx_width(q.y)).min(1.);
         v(q.x + self.wall_gap[i] * (1. - superellipse(w, self.shape.pharynx_shape)), q.y)
     }
+    /// The posterior wall at height y and lateral offset z: the point of the lamina's own
+    /// polyline there (between `wall_at` of the two wall points around y), so a surface drawn
+    /// through these points is the surface the cuts meet.
+    pub fn wall_point(&self, y: f64, z: f64) -> Vec2 {
+        let n = self.wall.len();
+        for i in 0..n - 1 {
+            let (a, b) = (self.wall[i], self.wall[i + 1]);
+            if (a.y <= y && y <= b.y) || i + 2 == n {
+                let f = ((y - a.y) / (b.y - a.y).max(1e-9)).clamp(0., 1.);
+                return lerp_v(self.wall_at(i, z), self.wall_at(i + 1, z), f);
+            }
+        }
+        self.wall_at(0, z)
+    }
+    /// The lips' meeting line at lateral offset z, for the head's skin to follow: the upper and
+    /// the lower lip's edge. Inside the opening they stand `gap` apart, as `lip_close` leaves
+    /// them; from the corners out they coincide (the laminae press them 4 mm further into each
+    /// other there, to seal).
+    pub fn lip_edge(&self, z: f64) -> (Vec2, Vec2) {
+        let nu = self.upper_lip.len() - 1;
+        let nl = self.lower_front.len() - 1;
+        let (u, l) = (self.upper_lip[nu], self.lower_front[nl]);
+        // where the closed lips meet: the upper lip carries 35 % of the closing, the lower 65 %
+        let meet = 0.65 * u.y + 0.35 * l.y;
+        let gap = (u.y - l.y).max(0.) * superellipse(z / self.lip_w, self.shape.lip_corner_shape);
+        let xu = self.upper_lip_at(nu, z, self.front_shift(&self.upper, z)).x;
+        let xl = self.lower_lip_at(nl, z, self.front_shift(&self.lower, z)).x;
+        (v(xu, meet + 0.35 * gap), v(xl, meet - 0.65 * gap))
+    }
+    /// The epiglottis' laryngeal surface: fraction f from its base to its tip, at lateral offset z
+    /// (its sides curl backwards).
+    pub fn epiglottis_at(&self, f: f64, z: f64) -> Vec2 {
+        let shift = v(self.shape.epiglottis_curl * z * z / self.map.k, 0.);
+        add(lerp_v(self.epi[0], self.epi[1], f), shift)
+    }
     /// how far (cm) the lips and cheek stand behind their midline position at lateral offset z
     pub fn front_shift(&self, arch: &Arch, z: f64) -> f64 {
         let k = self.map.k;
@@ -630,9 +682,8 @@ impl Parts {
         }
         // ---- epiglottis plate
         if az < s.epiglottis_width * k {
-            let shift = v(s.epiglottis_curl * z * z / k, 0.);
-            let base = add(self.epi[0], shift);
-            let tip = add(self.epi[1], shift);
+            let base = self.epiglottis_at(0., z);
+            let tip = self.epiglottis_at(1., z);
             let d = norm(sub(tip, base));
             let th = scale(v(d.y, -d.x), 0.25 * k);
             l.tissue[T_EPIGLOTTIS].extend_from_slice(&[base, tip, add(tip, th), add(base, th)]);
@@ -764,16 +815,12 @@ impl Parts {
                 let (centre, rx, ry) = self.piriform_ellipse();
                 ellipse(&mut l.air[AIR_PIRIFORM[j]], centre, rx * sqrt(rad), ry * sqrt(rad));
             }
-            let vw = s.vallecula_width * k;
-            let zz = (az - 0.15 * k - vw) / vw;
-            if z * side > 0. && zz.abs() < 1. {
+            let (vz, vrz) = self.vallecula(*side);
+            let zz = (z - vz) / vrz;
+            if zz.abs() < 1. {
                 let r = sqrt(1. - zz * zz);
-                ellipse(
-                    &mut l.air[AIR_VALLECULA[j]],
-                    add(self.vallecula, v(-0.2 * k, 0.3 * k)),
-                    0.3 * k * r,
-                    0.5 * s.vallecula_depth * k * r,
-                );
+                let (centre, rx, ry) = self.vallecula_ellipse();
+                ellipse(&mut l.air[AIR_VALLECULA[j]], centre, rx * r, ry * r);
             }
         }
         l.bound();
@@ -784,6 +831,16 @@ impl Parts {
         let k = self.map.k;
         let ry = 0.5 * self.shape.piriform_depth * k;
         (v(self.glottis.x - 0.2 * k, self.bottom + 0.1 * k - ry), 1.1 * k, ry + 0.05 * k)
+    }
+    /// a vallecula's sagittal section at its widest: centre, AP and vertical radii (cm)
+    pub fn vallecula_ellipse(&self) -> (Vec2, f64, f64) {
+        let k = self.map.k;
+        (add(self.vallecula, v(-0.2 * k, 0.3 * k)), 0.3 * k, 0.5 * self.shape.vallecula_depth * k)
+    }
+    /// vallecula centre (lateral, cm) and lateral radius: beside the median fold
+    pub fn vallecula(&self, side: f64) -> (f64, f64) {
+        let vw = self.shape.vallecula_width * self.map.k;
+        (side * (0.15 * self.map.k + vw), vw)
     }
     /// piriform fossa centre (lateral, cm) and lateral radius
     pub fn piriform(&self, side: f64) -> (f64, f64) {
