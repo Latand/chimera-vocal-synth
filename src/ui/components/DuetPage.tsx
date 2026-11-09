@@ -15,14 +15,13 @@
  * `spell` ({"owr": "our"}) writes a syllable spelled for the dictionary as it should read.
  */
 import { useEffect, useRef, useState } from "react";
-import { AnatomyView3D, type HeadFeed } from "./AnatomyView3D.tsx";
+import { AnatomyView3D, type HeadFeed, type HeadView } from "./AnatomyView3D.tsx";
 import { Screen } from "./Screen.tsx";
 import { TeleTrack } from "../../show/tele.ts";
 import { Transport } from "../../show/transport.ts";
 import { getModel } from "../useModel.ts";
 import { VoiceModel } from "../analysis.ts";
 import { bodyLabel } from "../body.ts";
-import type { ViewFlags } from "../render/anatomy.ts";
 import { mouthWords } from "../mouthWords.ts";
 import { V } from "../colors.ts";
 import { g2p } from "../speech.ts";
@@ -44,8 +43,8 @@ interface Loaded {
   voices: { name: string; track: TeleTrack; words: SungWords | null }[];
 }
 
-/** the heads as the face screen shows them by default, less the measurement labels */
-const VIEW: ViewFlags = { pressure: true, particles: true, grid: false, calipers: false };
+/** the heads as the face screen shows them by default (opened, so each voice's tract shows), less the measurement labels */
+const VIEW: HeadView = { calipers: false, cutaway: true };
 
 async function fetchOk(url: string): Promise<Response> {
   const r = await fetch(url);
