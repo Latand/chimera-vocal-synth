@@ -46,6 +46,10 @@ export interface LabState {
   cutaway: boolean;
   xray: boolean;
   explode: boolean;
+  /** the head around the tract: skin, fat, muscle, bones (cut open with `cutaway`) */
+  head: boolean;
+  /** the head's skin translucent, to see the tract inside the closed head */
+  seeThrough: boolean;
   /** the model follows the live voice's articulators */
   follow: boolean;
 }
@@ -139,7 +143,7 @@ let session = 0;
 const FIRST_BEAT = BEAT_PRESETS[0];
 
 export const useStore = create<State>((set, get) => ({
-  lab: { shape: {}, cut: 0.82, plane: "perpendicular", at: { sagittal: 0, coronal: 4.5, axial: 8.3 }, hidden: [], element: "tongue", cutaway: true, xray: false, explode: false, follow: false },
+  lab: { shape: {}, cut: 0.82, plane: "perpendicular", at: { sagittal: 0, coronal: 4.5, axial: 8.3 }, hidden: [], element: "tongue", cutaway: true, xray: false, explode: false, head: true, seeThrough: false, follow: false },
   setLab: (patch) => set((s) => ({ lab: { ...s.lab, ...patch } })),
   started: false,
   starting: false,

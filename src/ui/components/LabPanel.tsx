@@ -9,6 +9,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { tract3dSpecs, tract3dPresets, ARTIC_SPECS, type HumanArtic, type Tract3dFrame, type Tract3dWant } from "../../wasm/engine.ts";
 import { useStore, type LabState } from "../store.ts";
 import { useModel } from "../useModel.ts";
+import { buildHead, buildSection } from "../render/head3d.ts";
 import { sameBody } from "../body.ts";
 import { VoiceModel } from "../analysis.ts";
 import { engine } from "../../audio/AudioEngine.ts";
@@ -81,6 +82,9 @@ export function LabPanel() {
       return { frame: null, error: e instanceof Error ? e.message : String(e) };
     }
   }, [model, a, lab.shape, lab.cut, lab.plane, lab.at]);
+  // the head around the tract (display only), rebuilt with the posture
+  const head = useMemo(() => (lab.head ? buildHead(model, a) : null), [model, a, lab.head]);
+  const section = useMemo(() => (lab.head && lab.cutaway ? buildSection(model, a) : null), [model, a, lab.head, lab.cutaway]);
   const engineAreas = useMemo(() => {
     const e = model.areas(a);
     const s: number[] = [];
@@ -189,7 +193,7 @@ export function LabPanel() {
           </>
         }
       >
-        <LabScene frame={frame} cut={lab.plane === "perpendicular" ? cut : shown} lab={lab} view={view} scale={k} />
+        <LabScene frame={frame} cut={lab.plane === "perpendicular" ? cut : shown} lab={lab} view={view} scale={k} head={head} section={section} />
         <div className="lab-row lab-elements" role="group" aria-label="Elements shown">
           {ELEMENTS.map((e) => (
             <Chip
@@ -205,8 +209,14 @@ export function LabPanel() {
           ))}
         </div>
         <div className="lab-row" role="group" aria-label="3D view options">
-          <Chip on={lab.cutaway} onClick={() => setLab({ cutaway: !lab.cutaway })} title="Hide the right half to look inside">
+          <Chip on={lab.head} onClick={() => setLab({ head: !lab.head })} title="The head around the tract: skin, fat, muscle, skull and brain, jaw, spine, hyoid and larynx">
+            Head
+          </Chip>
+          <Chip on={lab.cutaway} onClick={() => setLab({ cutaway: !lab.cutaway })} title="Hide the right half to look inside (the head's layers show where they are cut)">
             Cut away
+          </Chip>
+          <Chip on={lab.seeThrough} onClick={() => setLab({ seeThrough: !lab.seeThrough })} disabled={!lab.head || lab.cutaway} title="Make the skin translucent (with the head whole)">
+            See-through
           </Chip>
           <Chip on={lab.xray} onClick={() => setLab({ xray: !lab.xray })} title="Show the lines behind surfaces too">
             X-ray
@@ -226,7 +236,10 @@ export function LabPanel() {
             Show all
           </Chip>
         </div>
-        <p className="lab-note">Drag to turn · wheel or pinch to zoom · amber: the cut, pink: the centreline.</p>
+        <p className="lab-note">
+          Drag to turn · wheel or pinch to zoom · amber: the cut, pink: the centreline.
+          {lab.head && lab.cutaway ? " Cut faces: skin, fat (yellow), muscle (red), bone (ivory), cartilage (pale blue), brain (grey-pink)." : ""}
+        </p>
       </Screen>
 
       <Screen title="Cut" sub={PLANES.find((p) => p.key === lab.plane)!.label} className="lab-cut-screen" label="Cross-section">

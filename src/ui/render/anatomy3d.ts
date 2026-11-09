@@ -31,13 +31,13 @@ import { Expression } from "./expression.ts";
 type Table = readonly (readonly [number, number])[];
 type V3 = [number, number, number];
 
-const smooth = (a: number, b: number, x: number): number => {
+export const smooth = (a: number, b: number, x: number): number => {
   const t = Math.max(0, Math.min(1, (x - a) / (b - a)));
   return t * t * (3 - 2 * t);
 };
 const clamp01 = (x: number) => Math.max(0, Math.min(1, x));
 
-function interp(tab: Table, x: number): number {
+export function interp(tab: Table, x: number): number {
   if (x <= tab[0][0]) return tab[0][1];
   for (let i = 1; i < tab.length; i++) {
     if (x <= tab[i][0]) {
@@ -52,18 +52,18 @@ function interp(tab: Table, x: number): number {
 // template cm (the adult male, before the body's scale), by template height unless noted
 
 /** half-width of the head and neck */
-const WIDTH: Table = [[-4.6, 5.3], [0, 5.4], [2.5, 5.5], [4.5, 5.25], [6.5, 5.5], [8.5, 6.1], [10.5, 6.6], [12.5, 7.0], [15, 7.3], [17.5, 7.65], [19.5, 7.4], [21, 6.5], [22.2, 4.6], [23.0, 1.0]];
+export const WIDTH: Table = [[-4.6, 5.3], [0, 5.4], [2.5, 5.5], [4.5, 5.25], [6.5, 5.5], [8.5, 6.1], [10.5, 6.6], [12.5, 7.0], [15, 7.3], [17.5, 7.65], [19.5, 7.4], [21, 6.5], [22.2, 4.6], [23.0, 1.0]];
 /** the face's surface beside the midline features (chin, lips, nose), as body x */
-const PLANE: Table = [[3.4, 5.9], [4.6, 6.2], [5.7, 6.15], [6.5, 6.2], [8.0, 6.35], [9.5, 6.35], [10.6, 6.55], [11.6, 6.75], [12.6, 6.9], [13.9, 7.15], [15.0, 7.45], [16.1, 7.95]];
+export const PLANE: Table = [[3.4, 5.9], [4.6, 6.2], [5.7, 6.15], [6.5, 6.2], [8.0, 6.35], [9.5, 6.35], [10.6, 6.55], [11.6, 6.75], [12.6, 6.9], [13.9, 7.15], [15.0, 7.45], [16.1, 7.95]];
 /** half-width of the midline feature: the chin, then the nose */
-const FEATURE: Table = [[3.4, 2.0], [4.6, 2.2], [5.7, 2.4], [6.5, 2.6], [10.6, 1.7], [11.0, 1.75], [11.65, 1.2], [12.6, 0.95], [13.9, 0.75], [15.0, 0.9], [16.1, 1.6]];
+export const FEATURE: Table = [[3.4, 2.0], [4.6, 2.2], [5.7, 2.4], [6.5, 2.6], [10.6, 1.7], [11.0, 1.75], [11.65, 1.2], [12.6, 0.95], [13.9, 0.75], [15.0, 0.9], [16.1, 1.6]];
 /** where the head is widest, as a fraction of the way from the back to the face */
-const WIDEST: Table = [[-4.6, 0.5], [3.0, 0.5], [6.0, 0.42], [12, 0.42], [16, 0.45], [23, 0.45]];
+export const WIDEST: Table = [[-4.6, 0.5], [3.0, 0.5], [6.0, 0.42], [12, 0.42], [16, 0.45], [23, 0.45]];
 /** the jaw's lower border in the side view (x → y): the skin below it is the neck's */
 const JAW_BORDER: Table = [[-3, 8.5], [-1.6, 8.0], [-0.6, 6.4], [1.2, 4.6], [3.5, 3.6], [5.3, 3.0], [7.3, 3.3], [8.6, 4.4]];
 /** the back edge of the ramus (y → x): the skin behind it stays with the skull */
 const RAMUS_BACK: Table = [[6.0, -0.6], [7.4, -0.8], [9.6, -1.9], [10.6, -2.5], [12, -2.6]];
-const BRAIN_WIDTH: Table = [[12.3, 4.0], [13.0, 5.6], [14.5, 6.4], [16.5, 6.9], [18.5, 6.6], [20.0, 5.4], [21.0, 3.6], [21.45, 0.5]];
+export const BRAIN_WIDTH: Table = [[12.3, 4.0], [13.0, 5.6], [14.5, 6.4], [16.5, 6.9], [18.5, 6.6], [20.0, 5.4], [21.0, 3.6], [21.45, 0.5]];
 /** the tongue's half-width and how far its sides fall below the midline, root (0) to tip (1) */
 const TONGUE_W: Table = [[0, 1.5], [0.15, 1.9], [0.35, 2.35], [0.6, 2.45], [0.8, 2.2], [0.92, 1.5], [1, 0.55]];
 const TONGUE_H: Table = [[0, 1.3], [0.35, 1.1], [0.7, 0.9], [0.9, 0.55], [1, 0.25]];
@@ -73,12 +73,12 @@ const LOWER_TEETH = [[0.54, 0.9, 0.6], [0.6, 0.92, 0.62], [0.7, 1.0, 0.75], [0.7
 /** the lips' patch reaches this far to each side (template cm), past the widest mouth */
 const LIP_HALF = 3.0;
 /** superellipse exponent of the back half of a cross-section */
-const PB = 2.2;
+export const PB = 2.2;
 
 /** a head (or brain) cross-section at one height: front and back on the midline, the bare front
  *  beside the midline feature, half-width, where it is widest, the feature's size and width, and
  *  the superellipse exponent of the front half (the back half uses PB) */
-interface Section {
+export interface Section {
   F: number;
   Bk: number;
   Fs: number;
@@ -92,7 +92,7 @@ interface Section {
 const bump = (u: number) => (Math.abs(u) < 1 ? (1 - u * u) ** 2 : 0);
 
 /** x of the front surface at lateral z (without the midline feature when bare) */
-function frontX(s: Section, z: number, bare = false): number {
+export function frontX(s: Section, z: number, bare = false): number {
   const u = Math.min(1, Math.abs(z) / s.W);
   const c = Math.pow(1 - Math.pow(u, s.pf), 1 / s.pf);
   return s.xw + (s.Fs - s.xw) * c + (bare ? 0 : s.E * bump(z / s.wf));
@@ -127,7 +127,7 @@ function halfRing(s: Section, zf: number, out: number[]): void {
 }
 
 /** A closed outline's cross-sections by height, tabulated (rest shapes are built once per body). */
-class Shape {
+export class Shape {
   private readonly rows: (Section | null)[] = [];
   readonly y0: number;
   readonly y1: number;
@@ -222,7 +222,7 @@ interface Rest {
 }
 
 /** how much of the jaw's rotation a point of the face's skin follows (rest pose, body cm) */
-function jawWeight(k: number, ph: number, x: number, y: number): number {
+export function jawWeight(k: number, ph: number, x: number, y: number): number {
   const X = x / k, Yb = y / k;
   const Y = Yb >= 7 ? Yb : 7 - (7 - Yb) / ph;
   const wv = 1 - smooth(7.6, 9.1, Y); // the cheek above the mouth's corners stays with the skull
