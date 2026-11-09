@@ -68,11 +68,29 @@ export function LabCutView({ drawing, size }: { drawing: CutDrawing | null; size
   const ref = usePhosphor(({ ctx, w, h }) => {
     const dr = d.current;
     if (!dr) return;
-    // a fixed scale for each kind of view, so the shape's size reads directly
-    const sc = Math.min(w, h * 1.4) / span.current;
-    const cx = w / 2, cy = h / 2;
-    // grid: 1 cm (cuts); a sagittal plane is fitted to the screen instead
-    const nx = Math.ceil(w / sc / 2) + 1, ny = Math.ceil(h / sc / 2) + 1;
+    // a fixed scale for each kind of view, so the shape's size reads directly; a cut that would
+    // leave the screen at that scale (a whole coronal or axial plane: its origin is not its
+    // middle) is centred on its own extent and, if still too large, drawn smaller. The scale bar
+    // always shows the scale in use.
+    let sc = Math.min(w, h * 1.4) / span.current;
+    const cx = w / 2;
+    let cy = h / 2;
+    if (dr.kind === "cut") {
+      let lo = Infinity, hi = -Infinity, wide = 0;
+      for (const r of dr.cut.rows) {
+        for (const q of r.intervals) {
+          lo = Math.min(lo, q.lo);
+          hi = Math.max(hi, q.hi);
+          wide = Math.max(wide, Math.abs(r.z) + 0.1);
+        }
+      }
+      if (Number.isFinite(lo) && (Math.max(Math.abs(lo), Math.abs(hi)) * sc > h / 2 - 12 || wide * sc > w / 2 - 12)) {
+        sc = Math.min(sc, (w - 24) / (2 * wide), (h - 30) / Math.max(1e-6, hi - lo));
+        cy = h / 2 + ((lo + hi) / 2) * sc;
+      }
+    }
+    // grid: 1 cm from the cut's origin (cuts); a sagittal plane is fitted to the screen instead
+    const nx = Math.ceil(w / sc / 2) + 1, ny = Math.ceil(h / sc) + 1;
     if (dr.kind === "cut") {
       for (let i = -nx; i <= nx; i++) seg(ctx, cx + i * sc, 0, cx + i * sc, h, V.frame, i === 0 ? 1 : 0.6, { alpha: i === 0 ? 1 : 0.7 });
       for (let i = -ny; i <= ny; i++) seg(ctx, 0, cy + i * sc, w, cy + i * sc, V.frame, i === 0 ? 1 : 0.6, { alpha: i === 0 ? 1 : 0.7 });
@@ -81,7 +99,7 @@ export function LabCutView({ drawing, size }: { drawing: CutDrawing | null; size
     if (dr.kind === "cut") {
       drawCut(ctx, dr.cut, (z, a) => [cx + z * sc, cy - a * sc]);
       label(ctx, dr.axes[1], cx + 4, 14, { size: 9, color: V.blueMid, ls: 0.12 });
-      label(ctx, dr.axes[0], w - 6, cy - 6, { size: 9, color: V.blueMid, align: "right", ls: 0.12 });
+      label(ctx, dr.axes[0], w - 6, Math.min(h - 26, Math.max(14, cy - 6)), { size: 9, color: V.blueMid, align: "right", ls: 0.12 });
     } else {
       const rows = dr.plane.rows;
       if (rows.length) {

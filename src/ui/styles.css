@@ -2875,6 +2875,10 @@ input[type="range"]::-moz-range-thumb {
 .lab-area-screen { grid-area: area; }
 .lab-shape { grid-area: shape; }
 .lab-sound { grid-area: sound; }
+/* the 3D stage with the start prompt over it (and over nothing else) */
+.lab-stage-box {
+  position: relative;
+}
 .lab-stage {
   position: relative;
   height: clamp(340px, 56vh, 640px);
@@ -2951,11 +2955,15 @@ input[type="range"]::-moz-range-thumb {
   flex: 1 1 160px;
   min-width: 0;
 }
+.lab-listen {
+  align-items: center;
+}
 .lab-say {
   display: flex;
+  flex: 1 1 220px;
   align-items: center;
-  gap: 8px;
-  margin: 8px 12px 0;
+  gap: 6px;
+  min-width: 0;
   font-size: 11px;
   color: var(--blue);
 }

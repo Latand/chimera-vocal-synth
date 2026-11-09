@@ -28,9 +28,11 @@ export interface ViewOptions {
   calipers: boolean;
   /** the face screen shows the head in 3D (turn it with the pointer; no handles) */
   threeD: boolean;
+  /** the 3D head is opened along the midline, so the tract inside shows */
+  cutaway: boolean;
 }
 
-/** Lab mode: what the 3D tract shows. The 3D offsets never reach the voice (phase 1). */
+/** Lab mode: what the 3D tract shows. The 3D offsets do not reach the voice yet. */
 export interface LabState {
   /** 3D parameters as offsets from what the articulators imply */
   shape: Record<string, number>;
@@ -43,10 +45,12 @@ export interface LabState {
   hidden: string[];
   /** the element whose controls are shown and whose lines are lit */
   element: string;
+  /** hide the near half: the head shows its layers on the cut face */
   cutaway: boolean;
-  xray: boolean;
+  /** draw the selected element's grid over its surface */
+  lines: boolean;
   explode: boolean;
-  /** the head around the tract: skin, fat, muscle, bones (cut open with `cutaway`) */
+  /** the head round the tract */
   head: boolean;
   /** the head's skin translucent, to see the tract inside the closed head */
   seeThrough: boolean;
@@ -143,7 +147,7 @@ let session = 0;
 const FIRST_BEAT = BEAT_PRESETS[0];
 
 export const useStore = create<State>((set, get) => ({
-  lab: { shape: {}, cut: 0.82, plane: "perpendicular", at: { sagittal: 0, coronal: 4.5, axial: 8.3 }, hidden: [], element: "tongue", cutaway: true, xray: false, explode: false, head: true, seeThrough: false, follow: false },
+  lab: { shape: {}, cut: 0.82, plane: "perpendicular", at: { sagittal: 0, coronal: 4.5, axial: 8.3 }, hidden: [], element: "tongue", cutaway: true, lines: false, explode: false, head: true, seeThrough: false, follow: false },
   setLab: (patch) => set((s) => ({ lab: { ...s.lab, ...patch } })),
   started: false,
   starting: false,
@@ -158,7 +162,7 @@ export const useStore = create<State>((set, get) => ({
   volume: 0.8,
   hold: false,
   heldNotes: [],
-  view: { pressure: true, particles: true, grid: false, calipers: true, threeD: false },
+  view: { pressure: true, particles: true, grid: false, calipers: true, threeD: true, cutaway: true },
   mode: "play",
   setMode: (m) => {
     const prev = get().mode;

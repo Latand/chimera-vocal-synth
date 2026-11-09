@@ -13,10 +13,9 @@ import { Screen } from "./components/Screen.tsx";
 import { SpeakRight, speechInfo, speechSlots, speechWords } from "./components/SpeakPanel.tsx";
 import { BestiaryRight } from "./components/BestiaryPanel.tsx";
 import { CreatureView } from "./components/CreatureView.tsx";
-import { creatureById } from "../wasm/engine.ts";
 import { BeatboxRight, BeatOverlay, beatInfo, beatSlots } from "./components/BeatboxPanel.tsx";
 import { SingRight, singInfo, singWords } from "./components/SingPanel.tsx";
-import { playDemo, DEMO_SONGS } from "./singing.ts";
+import { StartPrompt } from "./components/StartPrompt.tsx";
 import type { Mode } from "./store.ts";
 import type { BodyName } from "../worklet/protocol.ts";
 import { BodyPad } from "./components/BodyPad.tsx";
@@ -94,7 +93,12 @@ function TopBar() {
             Engine load {Math.round(load * 100)} %
           </span>
         ) : (
-          <button className="primary" onClick={() => void start()} disabled={starting}>
+          <button
+            className="primary"
+            // in the lab the audio's start is the voice's start: the posture shown is heard at once
+            onClick={() => void start().then(() => useStore.getState().mode === "lab" && useStore.getState().started && useStore.getState().setHold(true))}
+            disabled={starting}
+          >
             {starting ? "Starting…" : "Start audio"}
           </button>
         )}
@@ -115,53 +119,16 @@ function ViewToggles() {
   const view = useStore((s) => s.view);
   const setView = useStore((s) => s.setView);
   const bestiary = useStore((s) => s.mode === "bestiary");
+  // the 3D head has its own two looks (whole, or opened to show the tract); the flat view keeps its overlays
+  const head = !bestiary && view.threeD;
   return (
     <div className="view-toggles">
       {!bestiary && <Toggle label="3D" checked={view.threeD} onChange={(v) => setView({ threeD: v })} />}
-      <Toggle label="Sound pressure" checked={view.pressure} onChange={(v) => setView({ pressure: v })} />
-      {!bestiary && <Toggle label="Airflow" checked={view.particles} onChange={(v) => setView({ particles: v })} />}
+      {head && <Toggle label="Cut away" checked={view.cutaway} onChange={(v) => setView({ cutaway: v })} />}
+      {!head && <Toggle label="Sound pressure" checked={view.pressure} onChange={(v) => setView({ pressure: v })} />}
+      {!bestiary && !head && <Toggle label="Airflow" checked={view.particles} onChange={(v) => setView({ particles: v })} />}
       <Toggle label={bestiary ? "Labels" : "Measurements"} checked={view.calipers} onChange={(v) => setView({ calipers: v })} />
-      {!bestiary && <Toggle label="Grid" checked={view.grid} onChange={(v) => setView({ grid: v })} />}
-    </div>
-  );
-}
-
-function StartPrompt() {
-  const started = useStore((s) => s.started);
-  const starting = useStore((s) => s.starting);
-  const err = useStore((s) => s.startError);
-  const start = useStore((s) => s.start);
-  const setHold = useStore((s) => s.setHold);
-  const mode = useStore((s) => s.mode);
-  const playCall = useStore((s) => s.playCall);
-  const creature = useStore((s) => s.creature);
-  const setBeatPlaying = useStore((s) => s.setBeatPlaying);
-  if (started) return null;
-  const copy = {
-    bestiary: ["Each animal's sound comes from a simulation of its own sound source and airway.", "Start and hear a call", "Then play its calls, or hold the keys to sustain it at a pitch."],
-    beatbox: ["Every drum here is a mouth sound: lips, tongue and larynx pushing, sealing and sucking air.", "Start the beat", "Then edit the pattern, tap the pads, or hum a bass note on the keys."],
-    speak: ["Every sound here is produced by simulating air moving through a throat, mouth and nose.", "Start the voice", "Then type something and press Speak, or tap a sound in the chart."],
-    sing: ["Every sound here is produced by simulating air moving through a throat, mouth and nose.", "Start and hear a song", "Then play the keys: each note sings the next syllable of the lyrics."],
-  }[mode as "bestiary" | "beatbox" | "speak" | "sing"] ?? ["Every sound here is produced by simulating air moving through a throat, mouth and nose.", "Breathe in and start", "Then drag the tongue, lips or jaw, or play the keys."];
-  return (
-    <div className="start-prompt" data-layout="overlay">
-      <p>{copy[0]}</p>
-      <button
-        className="primary large"
-        disabled={starting}
-        onClick={async () => {
-          // the demo waits for audio itself, so a stop meanwhile (body, mode) cancels it
-          if (mode === "sing") return void playDemo(DEMO_SONGS[0].name, useStore.getState().body, start);
-          await start();
-          const first = creatureById(creature)?.calls[0];
-          if (mode === "bestiary" && first) playCall(first.id);
-          else if (mode === "beatbox") setBeatPlaying(true);
-          else if (mode === "play") setHold(true);
-        }}
-      >
-        {starting ? "Starting…" : copy[1]}
-      </button>
-      {err ? <p className="error">Audio could not start: {err}. Reload the page and try again.</p> : <p className="hint">{copy[2]}</p>}
+      {!bestiary && !head && <Toggle label="Grid" checked={view.grid} onChange={(v) => setView({ grid: v })} />}
     </div>
   );
 }
@@ -178,7 +145,7 @@ function LeftScreen() {
       className="left"
       focus
       title={bestiary ? "Creature" : "Vocal tract"}
-      sub={bestiary ? "Airway / live" : `${bodyLabel(body)} / ${threeD ? "3D" : "midsagittal"}`}
+      sub={bestiary ? "Airway / live" : `${bodyLabel(body)} / ${threeD ? "3D head" : "midsagittal"}`}
       label={bestiary ? "Live creature airway" : "Live vocal tract"}
       tools={<ViewToggles />}
     >

@@ -1,26 +1,27 @@
 /**
- * Lab mode: the engine's parametric 3D vocal tract. TRACT shows the elements in 3D, CUT one
- * cross-section to scale, AREA the area function against the one the voice uses now, SHAPE the
- * controls (presets, every element's 3D parameters, the 17 midline articulators) and SOUND the
- * current engine for the same articulation. The 3D-only parameters do not reach the voice in this
- * phase: the voice hears the articulators, as in Play.
+ * Lab mode: the engine's parametric 3D vocal tract inside the head. TRACT shows it in 3D (the
+ * head whole, opened along the midline, or the tract alone) and holds the listening controls;
+ * CUT one cross-section to scale; AREA the area function against the one the voice uses now;
+ * SHAPE the controls (postures, every element's 3D parameters, the 17 midline articulators);
+ * SOUND the spectrum. The voice hears the 17 articulators, as in Play; the 3D-only parameters
+ * (margins, grooves, widths) do not reach it yet.
  */
 import { useEffect, useMemo, useRef, useState } from "react";
-import { tract3dSpecs, tract3dPresets, ARTIC_SPECS, type HumanArtic, type Tract3dFrame, type Tract3dWant } from "../../wasm/engine.ts";
+import { tract3dSpecs, tract3dPresets, ARTIC_SPECS, type HumanArtic, type Tract3dWant } from "../../wasm/engine.ts";
 import { useStore, type LabState } from "../store.ts";
 import { useModel } from "../useModel.ts";
-import { buildHead, buildSection } from "../render/head3d.ts";
 import { sameBody } from "../body.ts";
 import { VoiceModel } from "../analysis.ts";
 import { engine } from "../../audio/AudioEngine.ts";
 import { speakText, stopSpeaking } from "../speech.ts";
 import { Screen, Chip } from "./Screen.tsx";
+import { StartPrompt } from "./StartPrompt.tsx";
 import { EncoderPages, type EncoderPage } from "./Encoder.tsx";
 import { SpectrumView } from "./SpectrumView.tsx";
 import { LabScene, type View } from "./lab/LabScene.tsx";
 import { LabCutView, type CutDrawing } from "./lab/LabCutView.tsx";
 import { LabAreaView } from "./lab/LabAreaView.tsx";
-import { ELEMENTS, MIDLINE, MIDLINE_PAGES, offsetFor, paramLabel, shapePages } from "../lab.ts";
+import { ELEMENTS, MIDLINE, MIDLINE_PAGES, offsetFor, paramLabel, shapePages, spokenForm } from "../lab.ts";
 
 const PLANES: { key: LabState["plane"]; label: string }[] = [
   { key: "perpendicular", label: "Along tract" },
@@ -69,9 +70,9 @@ export function LabPanel() {
   }, [lab.follow]);
 
   const a = lab.follow && live ? live : artic;
-  // the posture's geometry and meshes; the selected cut and plane come with it
+  // the posture's cuts and area function (the 3D view asks the engine for its own meshes)
   const result = useMemo(() => {
-    const want: Tract3dWant = { meshes: true, cut: lab.cut };
+    const want: Tract3dWant = { meshes: false, cut: lab.cut };
     if (lab.plane !== "perpendicular") {
       want.plane = lab.plane;
       want.at = lab.at[lab.plane];
@@ -82,11 +83,6 @@ export function LabPanel() {
       return { frame: null, error: e instanceof Error ? e.message : String(e) };
     }
   }, [model, a, lab.shape, lab.cut, lab.plane, lab.at]);
-  // the head around the tract (display only), rebuilt with the posture
-  // it depends on the jaw, the lips and the larynx only: rebuild when one of them moves
-  const headKey = [a.jaw, a.lipAp, a.lipProt, a.lipWidth, a.labiodental, a.larynx].map((x) => Math.round(x * 400)).join(",");
-  const head = useMemo(() => (lab.head ? buildHead(model, a) : null), [model, headKey, lab.head]);
-  const section = useMemo(() => (lab.head && lab.cutaway ? buildSection(model, a) : null), [model, a, lab.head, lab.cutaway]);
   const engineAreas = useMemo(() => {
     const e = model.areas(a);
     const s: number[] = [];
@@ -117,7 +113,6 @@ export function LabPanel() {
       </Screen>
     );
 
-  const k = model.bodyParams.scale;
   const cut = frame.cut;
   const drawing: CutDrawing | null =
     lab.plane === "perpendicular"
@@ -173,6 +168,9 @@ export function LabPanel() {
     setPreset(name);
     setLab({ shape: p.shape, follow: false });
     setArtic(p.artic, false);
+    // a consonant is heard in a word: with the audio running, say it between two vowels
+    const spoken = spokenForm(name);
+    if (spoken && useStore.getState().started) void sayInLab(spoken, true);
   };
   const cavity = (kind: string) => frame.cavities.filter((c) => c.kind === kind);
   const pir = cavity("piriform");
@@ -187,15 +185,19 @@ export function LabPanel() {
         label="3D tract"
         tools={
           <>
-            {(["side", "front", "top", "three"] as View[]).map((v) => (
-              <Chip key={v} toggle={false} onClick={() => setView((x) => ({ name: v, serial: x.serial + 1 }))} aria-label={`View from the ${v === "three" ? "front and side" : v}`}>
+            {(["side", "front", "three", "mouth"] as View[]).map((v) => (
+              <Chip key={v} toggle={false} onClick={() => setView((x) => ({ name: v, serial: x.serial + 1 }))} aria-label={v === "three" ? "View from the front and side" : v === "mouth" ? "View of the mouth" : `View from the ${v}`}>
                 {v === "three" ? "3/4" : v}
               </Chip>
             ))}
           </>
         }
       >
-        <LabScene frame={frame} cut={lab.plane === "perpendicular" ? cut : shown} lab={lab} view={view} scale={k} head={head} section={section} />
+        <div className="lab-stage-box">
+          <LabScene model={model} artic={a} frame={frame} cut={lab.plane === "perpendicular" ? cut : shown} plane={lab.plane === "sagittal" ? frame.plane : null} lab={lab} view={view} />
+          <StartPrompt />
+        </div>
+        <LabListen />
         <div className="lab-row lab-elements" role="group" aria-label="Elements shown">
           {ELEMENTS.map((e) => (
             <Chip
@@ -211,19 +213,19 @@ export function LabPanel() {
           ))}
         </div>
         <div className="lab-row" role="group" aria-label="3D view options">
-          <Chip on={lab.head} onClick={() => setLab({ head: !lab.head })} title="The head around the tract: skin, fat, muscle, skull and brain, jaw, spine, hyoid and larynx">
+          <Chip on={lab.head} onClick={() => setLab({ head: !lab.head })} title="The head round the tract">
             Head
           </Chip>
-          <Chip on={lab.cutaway} onClick={() => setLab({ cutaway: !lab.cutaway })} title="Hide the right half to look inside (the head's layers show where they are cut)">
+          <Chip on={lab.cutaway} onClick={() => setLab({ cutaway: !lab.cutaway })} title="Hide the near half to look inside (the head's layers show on the cut)">
             Cut away
           </Chip>
           <Chip on={lab.seeThrough} onClick={() => setLab({ seeThrough: !lab.seeThrough })} disabled={!lab.head || lab.cutaway} title="Make the skin translucent (with the head whole)">
             See-through
           </Chip>
-          <Chip on={lab.xray} onClick={() => setLab({ xray: !lab.xray })} title="Show the lines behind surfaces too">
-            X-ray
+          <Chip on={lab.lines} onClick={() => setLab({ lines: !lab.lines })} disabled={lab.element === MIDLINE} title="Draw the selected element's grid over its surface">
+            Outline
           </Chip>
-          <Chip on={lab.explode} onClick={() => setLab({ explode: !lab.explode })} title="Pull the elements apart">
+          <Chip on={lab.explode} onClick={() => setLab({ explode: !lab.explode })} disabled={lab.head} title="Pull the elements apart (with the head off)">
             Explode
           </Chip>
           <Chip
@@ -240,7 +242,7 @@ export function LabPanel() {
         </div>
         <p className="lab-note">
           Drag to turn · wheel or pinch to zoom · amber: the cut, pink: the centreline.
-          {lab.head && lab.cutaway ? " Cut faces: skin, fat (yellow), muscle (red), bone (ivory), cartilage (pale blue), brain (grey-pink)." : ""}
+          {lab.head && lab.cutaway ? " On the cut: skin, fat (yellow), muscle (red), bone (ivory), cartilage (pale blue), brain (grey-pink); the hole is the tract's air." : ""}
         </p>
       </Screen>
 
@@ -329,88 +331,140 @@ export function LabPanel() {
   );
 }
 
-/** The current engine for the posture shown: hold it, say IPA, or let the 3D model follow. */
-function LabSound() {
-  const body = useStore((s) => s.body);
-  const lab = useStore((s) => s.lab);
-  const setLab = useStore((s) => s.setLab);
-  const start = useStore((s) => s.start);
+/** Say `text` in the lab: the 3D model follows the voice while it speaks, then shows the posture again. */
+let saying = 0;
+async function sayInLab(text: string, ipa: boolean): Promise<boolean> {
+  const token = ++saying;
+  const s = useStore.getState();
+  const held = s.hold;
+  // speech breathes by itself: a held breath would drone under it
+  s.setHold(false);
+  await s.start();
+  const now = useStore.getState();
+  if (token !== saying || now.mode !== "lab" || !now.started) return true;
+  now.setLab({ follow: true });
+  let plan: Awaited<ReturnType<typeof speakText>> = null;
+  try {
+    plan = await speakText(text, { ipa, body: now.body, rate: 1, f0: now.source.f0 });
+  } catch {
+    now.setLab({ follow: false });
+    return false;
+  }
+  if (!plan) {
+    now.setLab({ follow: false });
+    return false;
+  }
+  // when the phrase is over, back to the posture (and to the held voice, if it was held)
+  const end = plan.plan.end + 0.25;
+  setTimeout(() => {
+    if (token !== saying) return;
+    const t = useStore.getState();
+    if (t.mode !== "lab") return;
+    t.setLab({ follow: false });
+    if (held) t.setHold(true);
+  }, end * 1000);
+  return true;
+}
+
+/** Listening, right under the 3D view: hold the voice on the posture, or say a word or IPA. */
+function LabListen() {
   const hold = useStore((s) => s.hold);
   const setHold = useStore((s) => s.setHold);
+  const start = useStore((s) => s.start);
   const starting = useStore((s) => s.starting);
   const startError = useStore((s) => s.startError);
-  const [ipa, setIpa] = useState("asa");
+  const setLab = useStore((s) => s.setLab);
+  const [text, setText] = useState("la la la");
+  const [ipa, setIpa] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const serial = useRef(0);
   useEffect(
     () => () => {
-      serial.current++;
+      saying++;
       stopSpeaking();
       useStore.getState().setHold(false);
     },
     [],
   );
-  const sustain = async () => {
+  const stop = () => {
+    serial.current++;
+    saying++;
+    stopSpeaking();
+    setHold(false);
+    setLab({ follow: false });
+  };
+  const listen = async () => {
     const token = ++serial.current;
     setError(null);
-    if (hold) {
-      setHold(false);
-      return;
-    }
+    if (hold) return stop();
+    saying++;
+    stopSpeaking();
+    setLab({ follow: false });
     await start();
     const s = useStore.getState();
     if (token === serial.current && s.mode === "lab" && s.started) setHold(true);
   };
   const say = async () => {
-    const token = ++serial.current;
+    serial.current++;
     setError(null);
-    setHold(false);
-    await start();
-    const s = useStore.getState();
-    if (token !== serial.current || s.mode !== "lab" || !sameBody(s.body, body) || !s.started) return;
-    setLab({ follow: true });
-    try {
-      await speakText(ipa, { ipa: true, body, rate: 1, f0: s.source.f0 });
-    } catch {
-      setError("Speech could not start. Try Say again.");
-    }
+    if (!(await sayInLab(text, ipa))) setError(ipa ? "That IPA could not be spoken. Try asa or iʃi." : "Nothing to say. Type a word.");
   };
   return (
-    <Screen title="Sound" sub="Current engine" className="lab-sound" label="Sound">
+    <>
+      <div className="lab-row lab-listen" role="group" aria-label="Listen">
+        <Chip on={hold} tone="amber" onClick={() => void listen()} disabled={starting} title="Hold the voice on the posture shown">
+          Listen
+        </Chip>
+        <Chip toggle={false} onClick={stop}>
+          Stop
+        </Chip>
+        <form
+          className="lab-say"
+          onSubmit={(e) => {
+            e.preventDefault();
+            void say();
+          }}
+        >
+          <input aria-label={ipa ? "IPA to say" : "Words to say"} value={text} onChange={(e) => setText(e.target.value)} maxLength={120} spellCheck={false} />
+          <Chip
+            on={ipa}
+            onClick={() => {
+              setIpa(!ipa);
+              setText(ipa ? "la la la" : "asa");
+            }}
+            title="Type IPA instead of words"
+          >
+            IPA
+          </Chip>
+          <button type="submit" className="chip amber" disabled={starting}>
+            Say
+          </button>
+        </form>
+      </div>
+      {(startError || error) && (
+        <p className="error lab-note" role="alert">
+          {error ?? "Audio could not start. Press Listen again."}
+        </p>
+      )}
+    </>
+  );
+}
+
+/** The voice's spectrum for the posture, and whether the 3D model follows the live voice. */
+function LabSound() {
+  const lab = useStore((s) => s.lab);
+  const setLab = useStore((s) => s.setLab);
+  return (
+    <Screen title="Sound" sub="Resonances" className="lab-sound" label="Sound">
       <div className="lab-canvas-box lab-spec-box">
         <SpectrumView />
       </div>
       <div className="lab-row" role="group" aria-label="Voice">
-        <Chip on={hold} onClick={() => void sustain()} disabled={starting}>
-          Hold
-        </Chip>
         <Chip on={lab.follow} onClick={() => setLab({ follow: !lab.follow })} title="The 3D model follows the voice's articulators">
           Follow voice
         </Chip>
-        <Chip
-          toggle={false}
-          onClick={() => {
-            serial.current++;
-            stopSpeaking();
-            setHold(false);
-          }}
-        >
-          Stop
-        </Chip>
       </div>
-      <div className="lab-say">
-        <label htmlFor="lab-ipa">IPA</label>
-        <input id="lab-ipa" value={ipa} onChange={(e) => setIpa(e.target.value)} maxLength={120} spellCheck={false} />
-        <Chip toggle={false} disabled={starting} onClick={() => void say()}>
-          Say
-        </Chip>
-      </div>
-      {(startError || error) && (
-        <p className="error" role="alert">
-          {error ?? "Audio could not start. Try Hold or Say again."}
-        </p>
-      )}
-      <p className="lab-note">The voice is the current engine: it hears the 17 articulators. The 3D-only parameters (margins, grooves, widths) reach the sound in phase 2.</p>
+      <p className="lab-note">Listen and Say are under the 3D view. The voice hears the 17 articulators; the 3D-only parameters (margins, grooves, widths) do not reach the sound yet.</p>
     </Screen>
   );
 }

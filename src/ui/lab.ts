@@ -81,3 +81,12 @@ export function shapePages<T extends { key: string; element: string }>(specs: T[
 export function offsetFor(value: number, derived: number, fallback: number): number {
   return value - derived + fallback;
 }
+
+/**
+ * How a posture is heard: a vowel or a tongue shape is held; a consonant is said between two
+ * vowels (IPA), because a fricative or an approximant held alone is nearly silent.
+ */
+export function spokenForm(preset: string): string | null {
+  const consonant: Record<string, string> = { s: "asa", ʃ: "aʃa", l: "ala", f: "afa", ç: "içi", x: "axa", bunched: "aɹa", retroflex: "aɹa" };
+  return consonant[preset] ?? null;
+}
