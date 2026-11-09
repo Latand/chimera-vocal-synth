@@ -524,6 +524,7 @@ pub fn measure(vol: &Volume, line: &[P]) -> Measurement {
             }
             let mut lab = vec![0usize; n * n];
             let mut regions = vec![false];
+            let mut sizes = vec![0usize];
             let mut id = 0;
             for j in 0..mask.len() {
                 if mask[j] == 0 || lab[j] != 0 {
@@ -531,9 +532,11 @@ pub fn measure(vol: &Volume, line: &[P]) -> Measurement {
                 }
                 id += 1;
                 regions.push(false);
+                sizes.push(0);
                 let mut q = VecDeque::from([j]);
                 lab[j] = id;
                 while let Some(k) = q.pop_front() {
+                    sizes[id] += 1;
                     let (a, b) = (k / n, k % n);
                     if (a as f64 - 160.).abs() * res <= 0.6 && (b as f64 - 160.).abs() * res <= 3. {
                         regions[id] = true;
@@ -553,6 +556,11 @@ pub fn measure(vol: &Volume, line: &[P]) -> Measurement {
                         }
                     }
                 }
+            }
+            // the fast slicer's rule (`tract3d::MIN_REGION`): a region under 0.01 cm² (less than
+            // one MRI voxel's face) is neither area nor a channel
+            for (kept, size) in regions.iter_mut().zip(&sizes) {
+                *kept &= *size as f64 * res * res >= chimera::anatomy::tract3d::MIN_REGION;
             }
             let (mut count, mut alo, mut ahi, mut blo, mut bhi) = (0usize, n, 0, n, 0);
             for j in 0..mask.len() {

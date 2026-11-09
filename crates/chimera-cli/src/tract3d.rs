@@ -46,8 +46,8 @@ const ARTIC_KEYS: [ArticKey; 13] = [
     ArticKey::Epilarynx,
     ArticKey::Lateral,
 ];
-/// 3D tongue parameters the per-sound fit moves.
-const SHAPE_KEYS: [&str; 11] = ["sideRoot", "sideBack", "sideDorsum", "sideBlade", "sideTip", "grooveRoot", "grooveBack", "grooveDorsum", "grooveBlade", "grooveTip", "grooveWidth"];
+/// 3D parameters the per-sound fit moves: the tongue's, and the lips' rounding.
+const SHAPE_KEYS: [&str; 12] = ["sideRoot", "sideBack", "sideDorsum", "sideBlade", "sideTip", "grooveRoot", "grooveBack", "grooveDorsum", "grooveBlade", "grooveTip", "grooveWidth", "lipRound"];
 /// Anatomy fitted once per speaker.
 pub const ANATOMY_KEYS: [&str; 12] = ["pharynxWidthNaso", "pharynxWidthOro", "pharynxWidthHypo", "pharynxShape", "archWidth", "lowerArchWidth", "vaultDepth", "vaultShape", "epilarynxWidth", "piriformWidth", "piriformDepth", "tongueWidth"];
 
@@ -154,9 +154,16 @@ fn spec(key: &str) -> &'static chimera::anatomy::tract3d::ParamSpec {
 /// on a 1 mm grid (0.5 mm voxels, every other one; the MRI's own voxels are 1.2 mm), so a slit
 /// thinner than this disconnects the model's voxels while the fast slicer still counts it.
 const RESOLVED: f64 = 0.15;
+/// Weight of the resonance term in the fit's objective: a 10 % error of one resonance costs as
+/// much as 0.08 of area-function distance.
+const RESONANCE_WEIGHT: f64 = 0.8;
 /// Fast objective: area-function distance, tract length and cut proportions at six stations,
-/// and a penalty for openings the voxel pipeline cannot resolve (closed or thinner than 1.5 mm).
-fn objective(f: &Tract3dFrame, r: &Measurement, rs: &[f64], ra: &[f64]) -> f64 {
+/// a penalty for openings the voxel pipeline cannot resolve (closed or thinner than 1.5 mm), and
+/// the distance of F1–F3 from the reference's (both through the same 1D solver). The area
+/// distance alone weighs every centimetre of the tract alike, while the resonances depend most
+/// on a few places (the lips of a rounded vowel, the narrowest constriction): without the last
+/// term a fit could match the area function well and still sit a third above the reference's F1.
+fn objective(f: &Tract3dFrame, r: &Measurement, rs: &[f64], ra: &[f64], peaks: &[f64], resonance_weight: f64) -> f64 {
     let d = distance(rs, ra, &f.area_fn.s, &f.area_fn.area);
     // hydraulic thickness 2A/P: a slit l × t gives t whichever way it runs, a disc its radius
     let unresolved: f64 = f
@@ -171,11 +178,31 @@ fn objective(f: &Tract3dFrame, r: &Measurement, rs: &[f64], ra: &[f64]) -> f64 {
         let c = &f.cuts()[((f.area_fn.s.len() - 1) as f64 * fraction).round() as usize];
         shape += ((c.width / c.height.max(0.05)).max(0.05) / (q.width / q.height.max(0.05)).max(0.05)).log2().abs();
     }
-    d + 1.5 * length + 0.05 * shape / 6. + 0.5 * unresolved
+    let mut resonance = 0.;
+    if resonance_weight > 0. {
+        let own = resonances(&f.area_fn.s, &f.area_fn.area);
+        // a resonance the model's area function lacks counts as one 35 % off
+        resonance = peaks.iter().enumerate().map(|(i, p)| own.get(i).map_or(0.3, |q| (q / p).ln().abs())).sum();
+    }
+    d + 1.5 * length + 0.05 * shape / 6. + 0.5 * unresolved + resonance_weight * resonance
+}
+/// The posture a share `t` of the way from `a` to `b`, over the articulators and 3D parameters
+/// the per-sound fit moves.
+fn blend(a: &Posture, b: &Posture, t: f64) -> Posture {
+    let mut p = a.clone();
+    for k in ARTIC_KEYS {
+        p.artic.set(k, a.artic.get(k) + (b.artic.get(k) - a.artic.get(k)) * t);
+    }
+    for k in SHAPE_KEYS {
+        let (x, y) = (a.shape.get(k).unwrap(), b.shape.get(k).unwrap());
+        p.shape.set(k, x + (y - x) * t);
+    }
+    p
 }
 /// Per-sound fit: articulators and tongue shape, anatomy fixed; two restarts from the best.
 fn fit_posture(m: &mut Tract3d, f: &mut Tract3dFrame, start: &Posture, r: &Measurement, iters: usize) -> (Posture, f64) {
     let (rs, ra) = af(r);
+    let peaks = resonances(&rs, &ra);
     let mut x: Vec<f64> = ARTIC_KEYS.iter().map(|&k| start.artic.get(k)).collect();
     x.extend(SHAPE_KEYS.iter().map(|k| start.shape.get(k).unwrap()));
     let mut lo: Vec<f64> = ARTIC_KEYS.iter().map(|&k| chimera::control::articulators::artic_spec(k).min).collect();
@@ -192,6 +219,10 @@ fn fit_posture(m: &mut Tract3d, f: &mut Tract3dFrame, start: &Posture, r: &Measu
         }
         p
     };
+    // The resonance term is in from the first round. Ruled out: bringing it in round by round
+    // (0, half, all), which kept more of the area-function distance (median 0.436 / 0.402
+    // against 0.453 / 0.447) but left the male /u/ 25 % above the reference's F1, where the
+    // whole term from the start reaches 2 %.
     let mut best = f64::INFINITY;
     for round in 0..3 {
         let step: Vec<f64> = (0..x.len()).map(|i| if i < ARTIC_KEYS.len() { 0.25 } else { 0.15 } / (1 + round) as f64).collect();
@@ -201,7 +232,7 @@ fn fit_posture(m: &mut Tract3d, f: &mut Tract3dFrame, start: &Posture, r: &Measu
                 if m.compute(&p.artic, &p.shape, f).is_err() {
                     return 1e6;
                 }
-                objective(f, r, &rs, &ra)
+                objective(f, r, &rs, &ra, &peaks, RESONANCE_WEIGHT)
             },
             &x,
             NelderMeadOpts { lo: Some(lo.clone()), hi: Some(hi.clone()), step: Some(step), max_iter: Some(iters / 3), ..Default::default() },
@@ -216,6 +247,7 @@ fn fit_posture(m: &mut Tract3d, f: &mut Tract3dFrame, start: &Posture, r: &Measu
 /// Anatomy fit, once per speaker: shared parameters over several sounds' postures.
 fn fit_anatomy(m: &mut Tract3d, f: &mut Tract3dFrame, postures: &[Posture], refs: &[&Measurement], anatomy: &ShapeParams, iters: usize) -> (ShapeParams, f64) {
     let afs: Vec<_> = refs.iter().map(|r| af(r)).collect();
+    let peaks: Vec<_> = afs.iter().map(|(s, a)| resonances(s, a)).collect();
     let x0: Vec<f64> = ANATOMY_KEYS.iter().map(|k| anatomy.get(k).unwrap()).collect();
     let lo: Vec<f64> = ANATOMY_KEYS.iter().map(|k| spec(k).min).collect();
     let hi: Vec<f64> = ANATOMY_KEYS.iter().map(|k| spec(k).max).collect();
@@ -233,7 +265,7 @@ fn fit_anatomy(m: &mut Tract3d, f: &mut Tract3dFrame, postures: &[Posture], refs
                 if m.compute(&p.artic, &apply(x, &p.shape), f).is_err() {
                     return 1e6;
                 }
-                sum += objective(f, refs[j], &afs[j].0, &afs[j].1);
+                sum += objective(f, refs[j], &afs[j].0, &afs[j].1, &peaks[j], RESONANCE_WEIGHT);
             }
             sum / postures.len() as f64
         },
@@ -333,6 +365,15 @@ pub fn run(args: &[String]) -> Result<(), String> {
                 option(args, "--only", ""),
             )
         }
+        Some("table") => {
+            // the docs' table again from a finished run's table.json
+            if args.len() < 2 {
+                return Err("tract3d table <validate-out-dir>".into());
+            }
+            let out = Path::new(&args[1]);
+            let table: Value = serde_json::from_slice(&fs::read(out.join("table.json")).map_err(|e| e.to_string())?).map_err(|e| e.to_string())?;
+            report::table(&table, &out.join("table.md"))
+        }
         Some("fit-derive") => {
             if args.len() < 2 {
                 return Err("tract3d fit-derive <validate-out-dir> [--iterations N]".into());
@@ -376,7 +417,7 @@ pub fn run(args: &[String]) -> Result<(), String> {
             );
             Ok(())
         }
-        _ => Err("tract3d model|sheet|cut|presets|reference|validate|fit-derive|usc|acoustics|walls|benchmark".into()),
+        _ => Err("tract3d model|sheet|cut|presets|reference|validate|table|fit-derive|usc|acoustics|walls|benchmark".into()),
     }
 }
 
@@ -612,10 +653,24 @@ fn validate(root: &Path, out: &Path, iters: usize, anatomy_iters: usize, jobs: u
             let (s, a) = af(q);
             distance(&rs, &ra, &s, &a)
         });
-        let (fit, objective) = fit_posture(&mut m, &mut f, &start, r, iters);
-        m.compute(&fit.artic, &fit.shape, &mut f)?;
+        let (best, objective) = fit_posture(&mut m, &mut f, &start, r, iters);
+        // The fast objective sees the tract at its cuts, 2.5 mm apart; between two of them a
+        // channel can still be too thin for the voxel pipeline to follow, and the fit then has
+        // no measured area function. Keep a fit the voxel pipeline can measure: the best one,
+        // or the nearest to it on the way back to the starting posture.
+        let mut fit = best.clone();
+        let mut backed_off = 0.;
+        let mut measured = Err("not measured".to_string());
+        for back in [0., 0.1, 0.2, 0.35, 0.5, 0.7, 0.85, 1.] {
+            fit = blend(&best, &start, back);
+            m.compute(&fit.artic, &fit.shape, &mut f)?;
+            measured = model_measure(&m, &f);
+            backed_off = back;
+            if measured.is_ok() {
+                break;
+            }
+        }
         let fast_d = distance(&rs, &ra, &f.area_fn.s, &f.area_fn.area);
-        let measured = model_measure(&m, &f);
         // T-consistency: the model's voxels cut along the fast slicer's own centreline
         let line: Vec<[f64; 3]> = f.centreline.iter().map(|p| [p.x, p.y, 0.]).collect();
         let same = match &measured {
@@ -694,7 +749,7 @@ fn validate(root: &Path, out: &Path, iters: usize, anatomy_iters: usize, jobs: u
         Ok(json!({
             "case": c.name, "index": c.index, "sound": c.sound, "ipa": symbol, "body": label,
             "defaultD": default_d, "defaultFastD": default_fast, "fitD": fit_d, "fitFastD": fast_d, "objective": objective,
-            "measurementError": measured.as_ref().err(),
+            "measurementError": measured.as_ref().err(), "backedOff": backed_off,
             "referenceLength": r.length, "fitLength": measured.as_ref().ok().map(|(_, q)| q.length),
             "referenceVolume": r.volume, "fitVolume": measured.as_ref().ok().map(|(_, q)| q.volume),
             "slicerMedianAreaError": consistency, "slicerChannelAgreement": channel_agreement,
