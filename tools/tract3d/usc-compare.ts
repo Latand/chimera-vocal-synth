@@ -30,7 +30,7 @@ const PX = 3;
 const CM = (10 / 1.5625) * PX;
 function sagittal(f: Frame, x0: number, y0: number, w: number, h: number) {
   // the model's upper incisor edge goes where the panel's reference mark is (unregistered)
-  const ox = x0 + w * 0.22 - f.incisor.x * CM, oy = y0 + h * 0.42 + f.incisor.y * CM;
+  const ox = x0 + w * 0.78 - f.incisor.x * CM, oy = y0 + h * 0.3 + f.incisor.y * CM;
   let s = `<rect x="${x0}" y="${y0}" width="${w}" height="${h}" fill="none" stroke="#1d3a4c"/>`;
   for (const r of f.sagittal) for (let j = 0; j + 1 < r.x.length; j += 2) {
     const x = ox + r.x[j] * CM, wd = (r.x[j + 1] - r.x[j]) * CM, y = oy - r.y * CM;

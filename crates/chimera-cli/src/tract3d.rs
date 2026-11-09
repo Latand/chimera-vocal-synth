@@ -149,9 +149,15 @@ struct Posture {
 fn spec(key: &str) -> &'static chimera::anatomy::tract3d::ParamSpec {
     SPECS.iter().find(|s| s.key == key).expect("known key")
 }
-/// Fast objective: area-function distance, tract length and cut proportions at six stations.
+/// Narrowest opening (cm, across the cut's air) the comparison can resolve: the reference's
+/// voxels are 0.5 mm and the MRI's own 1.2 mm, so a thinner slit would vanish from the model's
+/// voxels while the fast slicer still counts it.
+const RESOLVED: f64 = 0.1;
+/// Fast objective: area-function distance, tract length and cut proportions at six stations,
+/// and a penalty for openings the voxel pipeline cannot resolve (closed or thinner than 1 mm).
 fn objective(f: &Tract3dFrame, r: &Measurement, rs: &[f64], ra: &[f64]) -> f64 {
     let d = distance(rs, ra, &f.area_fn.s, &f.area_fn.area);
+    let unresolved: f64 = f.cuts().iter().map(|c| if c.area <= 0. { 1. } else { (RESOLVED - c.height).max(0.) / RESOLVED }).sum();
     let length = (f.area_fn.length / r.length).ln().abs();
     let mut shape = 0.;
     for fraction in [0.15, 0.3, 0.45, 0.6, 0.75, 0.9] {
@@ -159,7 +165,7 @@ fn objective(f: &Tract3dFrame, r: &Measurement, rs: &[f64], ra: &[f64]) -> f64 {
         let c = &f.cuts()[((f.area_fn.s.len() - 1) as f64 * fraction).round() as usize];
         shape += ((c.width / c.height.max(0.05)).max(0.05) / (q.width / q.height.max(0.05)).max(0.05)).log2().abs();
     }
-    d + 1.5 * length + 0.05 * shape / 6.
+    d + 1.5 * length + 0.05 * shape / 6. + 0.5 * unresolved
 }
 /// Per-sound fit: articulators and tongue shape, anatomy fixed; two restarts from the best.
 fn fit_posture(m: &mut Tract3d, f: &mut Tract3dFrame, start: &Posture, r: &Measurement, iters: usize) -> (Posture, f64) {
