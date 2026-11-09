@@ -31,16 +31,53 @@ async function run(viewport: { width: number; height: number }, tag: string) {
   await startBtn.click();
   await page.waitForTimeout(1800);
   await page.screenshot({ path: `${outDir}/${tag}-1-running.png` });
-  // drag the tongue body handle via the canvas: find it by probing (center-ish of viewport)
+  // the face screen opens on the 3D head: it must be drawn (not a black pane), and a drag turns it
+  const headDrawn = async (where: string) => {
+    let lit = 0;
+    for (let i = 0; i < 40 && lit < 0.04; i++) {
+      await page.waitForTimeout(150);
+      lit = await page.evaluate(() => {
+        const c = document.querySelector<HTMLCanvasElement>(".anatomy.three canvas");
+        if (!c || !c.width) return 0;
+        const d = c.getContext("2d")!.getImageData(0, 0, c.width, c.height).data;
+        let n = 0, total = 0;
+        for (let p = 0; p < d.length; p += 4 * 97) {
+          total++;
+          if (d[p] + d[p + 1] + d[p + 2] > 90) n++;
+        }
+        return n / total;
+      });
+    }
+    logs.push(`[${tag}] 3d head in ${where}: ${(lit * 100).toFixed(0)} % of the pane lit`);
+    if (!(lit >= 0.04)) errors.push(`[${tag}] the 3D head is not drawn in ${where} (${(lit * 100).toFixed(1)} % lit)`);
+  };
+  await headDrawn("play");
   const box = await page.locator(".anatomy canvas").boundingBox();
   if (box) {
-    // move over likely tongue area and drag up/forward
     const sx = box.x + box.width * 0.47, sy = box.y + box.height * 0.42;
     await page.mouse.move(sx, sy);
     await page.mouse.down();
     await page.mouse.move(sx + 40, sy - 30, { steps: 10 });
     await page.mouse.up();
   }
+  // the head whole, then opened again
+  await page.getByRole("checkbox", { name: "Cut away" }).uncheck({ force: true });
+  await headDrawn("play, whole head");
+  await page.screenshot({ path: `${outDir}/${tag}-1b-whole.png` });
+  await page.getByRole("checkbox", { name: "Cut away" }).check({ force: true });
+  // the flat view keeps the handles: drag the tongue body there, then back to 3D
+  await page.getByRole("checkbox", { name: "3D" }).uncheck({ force: true });
+  await page.waitForTimeout(300);
+  const flat = await page.locator(".anatomy canvas").boundingBox();
+  if (flat) {
+    // move over likely tongue area and drag up/forward
+    const sx = flat.x + flat.width * 0.47, sy = flat.y + flat.height * 0.42;
+    await page.mouse.move(sx, sy);
+    await page.mouse.down();
+    await page.mouse.move(sx + 40, sy - 30, { steps: 10 });
+    await page.mouse.up();
+  }
+  await page.getByRole("checkbox", { name: "3D" }).check({ force: true });
   // vowel map drag
   const vm = await page.locator(".vowel-map").boundingBox();
   if (vm) {
@@ -58,6 +95,7 @@ async function run(viewport: { width: number; height: number }, tag: string) {
   // speak mode
   await page.getByRole("radio", { name: "Speak" }).click();
   await page.waitForTimeout(200);
+  await headDrawn("speak");
   await page.getByRole("button", { name: /^Speak$/ }).click();
   await page.waitForTimeout(1500);
   await page.screenshot({ path: `${outDir}/${tag}-3-speak.png`, fullPage: true });
@@ -82,6 +120,7 @@ async function run(viewport: { width: number; height: number }, tag: string) {
   // sing mode: a key sings the marked syllable and moves the cursor; legato; a demo song
   await page.getByRole("radio", { name: "Sing" }).click();
   await page.waitForTimeout(600);
+  await headDrawn("sing");
   const rms = () =>
     page.evaluate(() => {
       // @ts-expect-error debug handle
@@ -146,6 +185,7 @@ async function run(viewport: { width: number; height: number }, tag: string) {
   // beatbox: preset, play, playhead + level from telemetry, a pad, stop
   await page.getByRole("radio", { name: "Beatbox" }).click();
   await page.waitForTimeout(300);
+  await headDrawn("beatbox");
   await page.getByRole("button", { name: "Breakbeat" }).click();
   await page.getByRole("button", { name: "Play beat" }).click();
   const beatSamples: { step: number; rms: number }[] = [];
@@ -165,7 +205,26 @@ async function run(viewport: { width: number; height: number }, tag: string) {
   await page.waitForTimeout(300);
   await page.getByRole("button", { name: "Stop" }).click();
   await page.waitForTimeout(300);
-  // Lab: the engine's 3D geometry in every view, its controls, and the current engine's sound
+  // Lab: the 3D head and tract, the cuts in every plane, the controls, and the voice heard there.
+  // The sound is judged from telemetry as it arrives (each wait is bounded), never from a value
+  // read after a fixed sleep: a late telemetry message would still hold the state before the click.
+  const voice = () =>
+    page.evaluate(() => {
+      // @ts-expect-error debug handle
+      const t = window.__chimeraEngine?.latest?.t;
+      return t ? { rms: t.outRms as number, gate: t.gate as number, clock: t.clock as number } : null;
+    });
+  const until = async (what: string, ok: (v: { rms: number; gate: number; clock: number }) => boolean, ms = 6000): Promise<boolean> => {
+    const end = Date.now() + ms;
+    let last: Awaited<ReturnType<typeof voice>> = null;
+    while (Date.now() < end) {
+      last = await voice();
+      if (last && ok(last)) return true;
+      await page.waitForTimeout(60);
+    }
+    errors.push(`[${tag}] lab: ${what} (last telemetry ${JSON.stringify(last)})`);
+    return false;
+  };
   await page.getByRole("radio", { name: "Lab", exact: true }).click();
   await page.getByRole("heading", { name: "Tract", exact: true }).waitFor();
   await page.getByRole("button", { name: "open vowel /a/" }).click();
@@ -174,23 +233,32 @@ async function run(viewport: { width: number; height: number }, tag: string) {
     if (!(await page.locator(".lab-cut").isVisible())) errors.push(`[${tag}] lab cut missing for ${plane}`);
   }
   const area0 = await page.locator(".lab-cut-screen .lab-readout").textContent();
+  // a vowel posture is held: Listen opens the breath on it, Stop closes it
+  await until("the voice was not silent on entering the lab", (v) => v.rms < 1e-3);
+  await page.getByRole("group", { name: "Listen" }).getByRole("button", { name: "Listen", exact: true }).click();
+  await until("Listen did not open the breath", (v) => v.gate > 0.5);
+  await until("Listen on /a/ is silent", (v) => v.rms > 0.01);
+  await page.getByRole("button", { name: "close back rounded /u/" }).click();
+  await until("the held voice stopped when the posture changed", (v) => v.gate > 0.5 && v.rms > 0.005);
+  await page.screenshot({ path: `${outDir}/${tag}-7-lab.png`, fullPage: true });
+  await page.getByRole("group", { name: "Listen" }).getByRole("button", { name: "Stop", exact: true }).click();
+  await until("Stop did not close the breath", (v) => v.gate < 0.5);
+  await until("the voice still sounds after Stop", (v) => v.rms < 1e-3);
+  // a consonant posture is said between two vowels (held alone it is nearly silent), then it is quiet again
   await page.getByRole("button", { name: "grooved /s/" }).click();
   const area1 = await page.locator(".lab-cut-screen .lab-readout").textContent();
   if (area0 === area1) errors.push(`[${tag}] lab cut did not change with the posture`);
+  await until("the /s/ posture was not spoken", (v) => v.rms > 0.01);
+  await until("the voice still sounds after /asa/", (v) => v.rms < 1e-3, 8000);
+  // words, typed
+  await page.getByRole("textbox", { name: "Words to say" }).fill("hello");
+  await page.getByRole("group", { name: "Listen" }).getByRole("button", { name: "Say", exact: true }).click();
+  await until("Say (words) is silent", (v) => v.rms > 0.01);
+  await until("the voice still sounds after the word", (v) => v.rms < 1e-3, 8000);
   await page.getByRole("button", { name: "Show only Tongue" }).click();
   await page.getByRole("button", { name: "Show all", exact: true }).click();
   await page.getByRole("group", { name: "Controls for" }).getByRole("button", { name: "Midline" }).click();
-  // hold an open vowel: /s/ above is a near closure and is quiet when voiced
-  await page.getByRole("button", { name: "open vowel /a/" }).click();
-  await page.getByRole("button", { name: "Hold", exact: true }).click();
-  await page.waitForTimeout(800);
-  const labRms = await page.evaluate(() => {
-    // @ts-expect-error debug handle
-    return window.__chimeraEngine?.latest?.t?.outRms ?? -1;
-  });
-  if (!(labRms > 0.005)) errors.push(`[${tag}] lab hold is silent (${labRms})`);
-  await page.screenshot({ path: `${outDir}/${tag}-7-lab.png`, fullPage: true });
-  await page.getByRole("button", { name: "Stop", exact: true }).click();
+  for (const v of ["View from the side", "View of the mouth", "View from the front and side"]) await page.getByRole("button", { name: v }).click();
   if (await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)) errors.push(`[${tag}] lab scrolls horizontally`);
   // back to the human voice
   await page.getByRole("radio", { name: "Play" }).click();
@@ -222,10 +290,30 @@ async function run(viewport: { width: number; height: number }, tag: string) {
   await page.close();
 }
 
+// a visitor who opens the lab first: the prompt's one button starts the voice on the posture shown
+{
+  const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+  page.on("pageerror", (e) => errors.push(`[lab-first] pageerror: ${e.message}`));
+  await page.goto(new URL("?mode=lab", url).toString(), { waitUntil: "networkidle" });
+  await page.getByRole("button", { name: /start and listen/i }).click();
+  const end = Date.now() + 8000;
+  let level = -1;
+  while (Date.now() < end && !(level > 0.01)) {
+    await page.waitForTimeout(80);
+    level = await page.evaluate(() => {
+      // @ts-expect-error debug handle
+      return window.__chimeraEngine?.latest?.t?.outRms ?? -1;
+    });
+  }
+  logs.push(`[lab-first] lab start prompt: rms ${level.toFixed(4)}`);
+  if (!(level > 0.01)) errors.push(`[lab-first] the lab's start prompt made no sound (${level})`);
+  await page.close();
+}
+
 await run({ width: 1440, height: 980 }, "desktop");
 await run({ width: 390, height: 844 }, "mobile");
 await browser.close();
 console.log("console errors:", errors.length ? "\n" + errors.join("\n") : "none");
-console.log(logs.filter((l) => /load|warn|transcription|creature|held|back to|beatbox|silence|sing/i.test(l)).slice(0, 40).join("\n"));
+console.log(logs.filter((l) => /load|warn|transcription|creature|held|back to|beatbox|silence|sing|lab/i.test(l)).slice(0, 40).join("\n"));
 // a run that collected errors fails, so CI and agents can't read it as a pass
 if (errors.length) process.exit(1);
