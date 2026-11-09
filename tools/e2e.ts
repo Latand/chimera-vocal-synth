@@ -180,6 +180,8 @@ async function run(viewport: { width: number; height: number }, tag: string) {
   await page.getByRole("button", { name: "Show only Tongue" }).click();
   await page.getByRole("button", { name: "Show all", exact: true }).click();
   await page.getByRole("group", { name: "Controls for" }).getByRole("button", { name: "Midline" }).click();
+  // hold an open vowel: /s/ above is a near closure and is quiet when voiced
+  await page.getByRole("button", { name: "open vowel /a/" }).click();
   await page.getByRole("button", { name: "Hold", exact: true }).click();
   await page.waitForTimeout(800);
   const labRms = await page.evaluate(() => {
