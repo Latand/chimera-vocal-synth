@@ -2,6 +2,11 @@
 
 *Phase 1 research and design, 2026-11-09, base revision 2e567e2.*
 
+**Status (phase 1 built).** The model is `crates/chimera/src/anatomy/tract3d/` (what differs from
+the design: [model-design.md §0](model-design.md#0-as-built-phase-1)), the lab is `?mode=lab`, the
+comparison with MRI is `chimera tract3d` ([tools/tract3d](../../tools/tract3d/README.md)), and its
+numbers and critique are in [validation-results.md](validation-results.md).
+
 ## The requirement
 
 The operator's request (2026-11-09, in Ukrainian; the verbatim text is kept in the task record),
@@ -28,6 +33,7 @@ in the same app.
 | [reference-data.md](reference-data.md) | every dataset opened: URL, licence, access, formats, sounds, planes, git-usable numbers, what was downloaded |
 | [model-design.md](model-design.md) | the elements and their parameters, mapping from today's articulators, cuts and area function, API, lab mode, phase 2 outline |
 | [validation-plan.md](validation-plan.md) | reference pipeline, metrics, tests and pass lines with their justification, evidence, critique |
+| [validation-results.md](validation-results.md) | the measured numbers against DVTD and USC, the feature checks, cost, and the critique |
 
 ## Validation against the requirement
 

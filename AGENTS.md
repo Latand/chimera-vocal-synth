@@ -17,7 +17,9 @@ and the CLI) under a React UI. See the README.
 ## Map
 
 - `crates/chimera/`: the engine (no I/O). `crates/chimera-wasm/`: the browser's C ABI.
-  `crates/chimera-cli/`: `chimera render | compare csd | diagnose | calibrate`.
+  `crates/chimera-cli/`: `chimera render | compare csd | diagnose | calibrate | tract3d`.
+- `crates/chimera/src/anatomy/tract3d/`: the parametric 3D tract (lab mode; phase 2's acoustics).
+  `chimera tract3d` compares it with MRI kept outside the repository (`tools/tract3d/`).
 - `src/wasm/`: the UI's facade over the engine. `src/worklet/`: the AudioWorklet. `src/ui/`: React
   and the canvas renderers.
 - `tests/`: bun tests on the wasm build. `tools/`: e2e, layout lint, spectrogram, speech judge.
@@ -44,6 +46,11 @@ and the CLI) under a React UI. See the README.
 - **DOM content flows in `.screen-body`, never absolutely positioned.** Check: `bun run lint:layout`.
 - **Nothing copyrighted goes in git.** `public/shows/` is gitignored; never ship CSD audio or
   anything derived from it.
+- **The 3D tract does not reach the voice yet** (phase 1): only the lab and the CLI read it, and
+  its changes leave the goldens alone. MRI data and comparison images stay outside git; only this
+  project's error numbers, with the dataset's citation, go in `docs/tract3d/validation-results.md`.
+  It reads `HumanFrame`'s outlines by position, so a change to how `human.rs` builds them must
+  update `tract3d/parts.rs`. Check: `cargo test -p chimera --test tract3d`.
 - **Voice tuning follows `docs/hill-climb/README.md`** and never edits its judges.
 
 ## Checks
@@ -54,3 +61,4 @@ and the CLI) under a React UI. See the README.
 | `crates/chimera/` sound | re-bless goldens (above); `cargo run --release -q -p chimera --example bench` against the previous commit |
 | `crates/chimera-wasm/`, `src/wasm/`, `src/worklet/`, `src/main.tsx` | `bun run build && bun run preview`, then `bun tools/e2e.ts` |
 | `src/ui/`, `src/show/`, CSS | `bun run lint:layout` |
+| `crates/chimera/src/anatomy/tract3d/` | its tests (in `bun run test`); with the local data, `chimera tract3d validate` per `tools/tract3d/README.md`, and update `docs/tract3d/validation-results.md` |

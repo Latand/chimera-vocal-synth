@@ -5,6 +5,76 @@
 model is checked against MRI is in [validation-plan.md](validation-plan.md); the build order and
 what is deferred are in [README.md](README.md).
 
+## 0. As built (phase 1)
+
+The sections below are the design. This section lists where the built model differs and why;
+the code (`crates/chimera/src/anatomy/tract3d/`) is the reference.
+
+- **Laminae.** 65 laminae, 1 mm apart (× body size), over ±3.2 cm; a symmetric shape computes
+  33 and mirrors them. No edge bisection: at 1 mm the cuts agree with the model's own voxels to
+  under 1 % (validation-results.md).
+- **Lateral rules that cannot fold an outline.** The first build offset curved outlines by up to
+  2 cm along their normals; offsets larger than the curvature radius folded the palate and the
+  tongue into self-intersecting polygons, and parity filling turned the folds into air strips
+  beside the teeth (the side strips and extra channels in that build's MRI comparison). Now
+  (`parts.rs`):
+  - the posterior pharyngeal wall moves only horizontally, the palate and the lips only
+    vertically: graphs stay graphs;
+  - the tongue's dorsal surface moves along fibres from itself to a core curve inside the tongue
+    (depth `T(t)`: 1.2 cm at the root, 1.5 cm over the body, 0.9 at the blade, 0.45 at the tip):
+    `p = c + n·T·λ`, `λ = E(w) + (side(t)·S(w) − groove(t)·G(z))/T`, clamped to [0, 3]. `E` is
+    flat over the middle 70 % of the width and rounds over the margins (`edgeRound`); at the
+    root the whole width is rounded (the root bulges into the pharynx). Raising (`side` > 0)
+    spreads from a quarter of the width; lowering (`side` < 0) stays at the margins, so /l/
+    keeps its midline contact;
+  - the tip lobe (in front of the line from the blade's start to the frenulum) shortens towards
+    that line where the tongue is narrower than the lamina's offset: an affine compression, so
+    the polygon stays simple;
+  - teeth, lips, cheeks, faucial pillars and lateral pharyngeal walls are separate tissue
+    polygons, united by counting.
+- **Dental arches.** Each arch's lingual edge has half-width `width·u^e` (`u` the depth fraction
+  from the incisors, `e = 0.28 + 0.5·archTaper`), its buccal edge one tooth width (0.7 cm at the
+  incisors, 1 cm at the molars) further out along the normal. In a lamina the tooth row is the
+  stretch between the two edges, from the occlusal plane up (upper) or down (lower; carried by
+  the jaw's rotation, read from the frame). Upper cusps overlap the lower ones by 1.2 mm, so a
+  tooth row seals until the jaw opens. The rows rise into place 2.5–4.5 mm off the midline,
+  where the engine's own incisors are. Lips and cheeks follow the arch back (the mouth's corners
+  sit beside the canines); `buccalGap` is the vestibule between teeth and cheek (default 0: the
+  cheeks rest on the teeth, as in most MRI).
+- **Palate.** The vault drops at most to the gum line (occlusal plane + crown height), so the
+  alveolar ridge, already near the gum line, barely drops.
+- **Pharynx.** Beyond its half-width a lamina is wall (tissue bands found per lamina from the
+  width profile). The depth of the posterior corners' rounding is the engine's own pharyngeal gap
+  at that height (its grid samples), interpolated: a ray of our own could pass over the top of
+  the tongue and jump.
+- **Larynx.** The laryngeal tube reproduces the engine's epilarynx profile
+  (`HumanVocalTract::epilarynx_area`). Each piriform fossa is an ellipsoid beside it whose top
+  opens into the floor of the hypopharynx; its volume and depth are measured from the laminae
+  (2.6 cm³, 1.75 cm by default; published 2.1–2.9 cm³ and 1.6–2.0 cm [R12]).
+- **Velum and uvula.** The uvula is a lobe `uvulaLength` cm long and `uvulaWidth` wide at the
+  middle of the soft palate's free edge; beside it the edge recedes towards the root (the faucial
+  arches), so a lamina meets the velum only where it is that wide.
+- **Regions.** A cut drops regions under 0.01 cm² (one-lamina slivers between a tongue margin
+  and a tooth row, far below MRI resolution) from its area and channel count; the faded area
+  keeps them for continuity.
+- **Parameters.** 40 (`params.rs`, one table for struct, JSON names, ranges and the lab's
+  controls). `toothGap` was dropped (interdental gaps are not modelled). `derive` maps the 17
+  articulators as §5 says; its eight constants were fitted against DVTD once
+  (validation-results.md) and the fit did not justify changing the starting values.
+- **Presets.** 15 postures: the engine's own targets for a / i / u / ə / s / ʃ / l / f / ç / x,
+  plus flat, funnel, cupped, bunched and retroflex /ɹ/. /s/, /ʃ/, /l/ and retroflex /ɹ/ were tuned
+  with `chimera tract3d tune` until their feature checks pass (T-features, male template).
+- **Side cavities** reported: piriform fossae and valleculae (volume, depth, opening, where they
+  attach). The sublingual and buccal spaces are geometry (they appear in cuts) but have no
+  descriptor yet.
+- **API.** `tract3d` returns, per call: the parameters in use and what `derive` gives, the
+  centreline, the area function, every cut's summary, one cut with its rows (`want.cut`, 0–1),
+  one plane (`want.plane`: coronal / axial / sagittal at `want.at`), the cavities, and the element
+  meshes (fixed vertex counts per body; triangles for hidden-line fills plus line pairs).
+- **Lab.** As §9, with the plane chooser offering a sagittal plane at any lateral offset instead
+  of only the midsagittal one, an x-ray toggle (lines behind surfaces), and the 3D-only
+  parameters shown as the values in use (derive + offset).
+
 ## 1. Decisions in one screen
 
 1. **Geometry lives in the Rust engine**, a new module `chimera::anatomy::tract3d`, reached by

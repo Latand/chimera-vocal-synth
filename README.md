@@ -14,6 +14,10 @@ for tests and the `chimera` CLI.
 - **Sing**: piano roll with lyrics per note; consonants land before the beat.
 - **Beatbox**: pads and a step sequencer, every drum an articulatory gesture.
 - **Bestiary**: songbird (two-voice syrinx), seal, alligator and elephant.
+- **Lab** (`?mode=lab`): the parametric 3D vocal tract: turn it in 3D, show its parts one by one,
+  cut it anywhere, read the area function, shape the tongue (grooves, funnels, lateral channels)
+  and hear the current engine on the same articulation. How it compares with MRI:
+  [docs/tract3d/validation-results.md](docs/tract3d/validation-results.md).
 - **Duet** (`?show=<id>`): two 3D heads replay a pre-rendered song.
 
 Male, female and child bodies blend continuously. Everything on screen animates from live
