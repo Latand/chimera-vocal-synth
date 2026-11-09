@@ -4,7 +4,7 @@
  * after `initChimera()` has resolved (main.tsx does this before loading any UI module): the
  * constants below are read from the engine when this module loads.
  */
-import { call } from "./chimera.ts";
+import { call, floats } from "./chimera.ts";
 import { CREATURE_VISUALS } from "../ui/creatureVisuals.ts";
 import type {
   ArticKey, ArticSpec, BeatPreset, BodyMix, BeatSound, BeatStep, CreatureDef, CreatureTelemetry, DemoSong, Gesture, HumanArtic, HumanBody,
@@ -266,6 +266,11 @@ export function tract3dSpecs(): import("./types.ts").Tract3dSpec[] {
 }
 export function tract3dPresets(body: BodyMix): import("./types.ts").Tract3dPreset[] {
   return call("tract3dPresets", { body });
+}
+/** The 3D view of a posture (meshes, the lips' line, the midsagittal section): cheap enough for every frame. */
+export function tract3dView(m: AirwayModel, artic: HumanArtic, shape: import("./types.ts").Tract3dShape = {}, topology = false): import("./types.ts").Tract3dView {
+  const v = call<Omit<import("./types.ts").Tract3dView, "positions">>("tract3dView", { model: m.model, artic, shape, topology });
+  return { ...v, positions: floats() };
 }
 export function tract3d(m: AirwayModel, artic: HumanArtic, shape: import("./types.ts").Tract3dShape, want: import("./types.ts").Tract3dWant = {}): import("./types.ts").Tract3dFrame {
   return call("tract3d", { model: m.model, artic, shape, want });

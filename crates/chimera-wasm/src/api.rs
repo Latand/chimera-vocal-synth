@@ -37,6 +37,8 @@ struct State {
     next_model: usize,
     /// the page's English G2P (one dictionary, loaded once)
     g2p: EnglishG2P,
+    /// the last `tract3dView`'s vertex positions (read with `chimera_floats_ptr`/`_len`)
+    floats: Vec<f32>,
 }
 
 thread_local! {
@@ -96,6 +98,7 @@ fn dispatch(st: &mut State, req: &Value) -> Res {
         "tract3dSpecs" => to_json(&Tract3d::specs()),
         "tract3dPresets" => to_json(&chimera::anatomy::tract3d::presets(arg(req, "body")?)),
         "tract3d" => tract3d(st, req),
+        "tract3dView" => tract3d_view(st, req),
         "restTip" => to_json(&chimera::anatomy::human::rest_tip(arg(req, "jaw")?, arg(req, "tbX")?, arg(req, "tbY")?)),
         "frame" => {
             let a: HumanArtic = arg(req, "artic")?;
@@ -230,6 +233,52 @@ pub extern "C" fn chimera_result_ptr() -> *const u8 {
 #[unsafe(no_mangle)]
 pub extern "C" fn chimera_result_len() -> usize {
     STATE.with(|s| s.borrow().result.len())
+}
+
+/// The 3D view of a posture, for every screen that draws the head: the element meshes' vertex
+/// positions as floats in a buffer of their own (`chimera_floats_ptr`, valid until the next
+/// call; parsing them as JSON text cost more than computing them), each mesh's place in that
+/// buffer, and what the head needs beside them (`Tract3d::display`). No laminae and no cuts are
+/// computed. `topology: true` adds the triangles, lines and material groups, which stay the
+/// same for a body.
+fn tract3d_view(st: &mut State, req: &Value) -> Res {
+    let a: HumanArtic = arg(req, "artic")?;
+    let shape = arg::<Option<ShapeParams>>(req, "shape")?.unwrap_or_default();
+    let topology = req.get("topology").and_then(Value::as_bool).unwrap_or(false);
+    let section = req.get("section").and_then(Value::as_f64).unwrap_or(0.);
+    let mut floats = std::mem::take(&mut st.floats);
+    floats.clear();
+    let out = (|| {
+        let m = model(st, req)?;
+        let body = m.body.body();
+        let geometry = m.tract3d.get_or_insert_with(|| Box::new((Tract3d::new(body), Tract3dFrame::default())));
+        let t = &mut geometry.0;
+        t.pose(&a, &shape)?;
+        let mut meshes = Vec::new();
+        for mesh in t.meshes() {
+            let mut entry = json!({ "element": mesh.element, "start": floats.len() / 3, "count": mesh.positions.len() / 3 });
+            if topology {
+                entry["indices"] = json!(mesh.indices);
+                entry["lines"] = json!(mesh.lines);
+                entry["groups"] = to_json(&mesh.groups)?;
+            }
+            floats.extend_from_slice(&mesh.positions);
+            meshes.push(entry);
+        }
+        Ok(json!({ "meshes": meshes, "display": to_json(&t.display(section * body.scale))?, "shape": t.shape }))
+    })();
+    st.floats = floats;
+    out
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn chimera_floats_ptr() -> *const f32 {
+    STATE.with(|s| s.borrow().floats.as_ptr())
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn chimera_floats_len() -> usize {
+    STATE.with(|s| s.borrow().floats.len())
 }
 
 /// The lab's geometry for a posture: the area function and cut summaries every call, the

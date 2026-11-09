@@ -390,6 +390,41 @@ export interface Tract3dFrame {
   cavities: { kind: string; side: number; attachment: number; volume: number; neckArea: number; depth: number }[];
   meshes: Tract3dMesh[] | null;
 }
+/** One element's place in a view's positions, with its triangles when asked for. */
+export interface Tract3dViewMesh {
+  element: string;
+  /** first vertex and vertex count in `Tract3dView.positions` */
+  start: number;
+  count: number;
+  indices?: number[];
+  lines?: number[];
+  /** runs of `indices` by material ("tongue", "enamel", "gum", …) */
+  groups?: { material: string; start: number; count: number }[];
+}
+export interface Tract3dPolygon {
+  name: string;
+  points: { x: number; y: number }[];
+}
+/** What the head needs beside the meshes (`Tract3d::display` in the engine). */
+export interface Tract3dDisplay {
+  /** the lips' meeting line from the midline out: both lips' edges at each lateral offset */
+  lips: { halfWidth: number; z: number[]; upper: { x: number; y: number }[]; lower: { x: number; y: number }[] };
+  /** the jaw's pivot and its turn from rest (rad) */
+  jaw: { pivot: { x: number; y: number }; angle: number };
+  glottis: { x: number; y: number };
+  /** the midsagittal lamina: air polygons (the first the envelope), tissue polygons */
+  air: Tract3dPolygon[];
+  tissue: Tract3dPolygon[];
+  /** the engine's own midline outlines (tongue, velum, teeth, jaw bone, nasal cavity) */
+  outlines: Tract3dPolygon[];
+}
+export interface Tract3dView {
+  meshes: Tract3dViewMesh[];
+  display: Tract3dDisplay;
+  shape: Tract3dShape;
+  /** every mesh's vertices, x y z (cm) */
+  positions: Float32Array;
+}
 export interface Tract3dWant {
   /** include the element meshes (default true) */
   meshes?: boolean;
