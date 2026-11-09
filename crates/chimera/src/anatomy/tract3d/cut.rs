@@ -318,7 +318,6 @@ pub fn finish(out: &mut Cut, band: f64) {
             r.min_u = r.min_u.min(q.lo);
             r.max_u = r.max_u.max(q.hi);
             out.area += (q.hi - q.lo) * dz;
-            out.perimeter += 2. * dz;
             zlo = zlo.min(row.z);
             zhi = zhi.max(row.z);
             ulo = ulo.min(q.lo);
@@ -334,20 +333,64 @@ pub fn finish(out: &mut Cut, band: f64) {
             r.tag = if r.min_z <= 0. && r.max_z >= 0. { "main" } else if r.max_z < 0. { "left" } else { "right" };
         }
     }
-    // Vertical changes of interval endpoints, including births and deaths, complete the boundary.
-    for k in 1..out.rows.len() {
-        let (a, b) = (&out.rows[k - 1], &out.rows[k]);
-        for row in [a, b] {
-            for r in &row.intervals[..row.count] {
-                let other = if core::ptr::eq(row, a) { b } else { a };
-                let overlap = other.intervals[..other.count]
-                    .iter()
-                    .map(|q| (r.hi.min(q.hi) - r.lo.max(q.lo)).max(0.))
-                    .sum::<f64>();
-                out.perimeter += (r.hi - r.lo - overlap).max(0.);
+    out.perimeter = boundary_length(&out.rows);
+}
+
+/// Length of the kept regions' boundary: straight segments between the corresponding ends of
+/// overlapping intervals in neighbouring rows, plus the chord that closes a region where an
+/// interval begins or ends (its first and last row, and the notch where one interval faces two).
+/// (The first version added each row's lateral step to each end's change along u, a staircase
+/// whose length does not converge: 28 % too long on a circle.)
+fn boundary_length(rows: &[Row]) -> f64 {
+    let overlap = |a: &Interval, b: &Interval| a.lo <= b.hi && b.lo <= a.hi;
+    let none: &[Interval] = &[];
+    let mut length = 0.;
+    for k in 0..=rows.len() {
+        // `a` the row before the step, `b` the row after it (empty beyond either end)
+        let a = if k == 0 { none } else { &rows[k - 1].intervals[..rows[k - 1].count] };
+        let b = if k == rows.len() { none } else { &rows[k].intervals[..rows[k].count] };
+        let dz = if k == 0 || k == rows.len() { 0. } else { rows[k].z - rows[k - 1].z };
+        for r in b {
+            let mut first: Option<&Interval> = None;
+            let mut last: Option<&Interval> = None;
+            for p in a.iter().filter(|p| overlap(p, r)) {
+                if let Some(q) = last {
+                    // two intervals of the row before meet this one: the notch between them closes
+                    length += (p.lo - q.hi).max(0.);
+                }
+                first = first.or(Some(p));
+                last = Some(p);
+            }
+            match (first, last) {
+                (Some(p), Some(q)) => {
+                    // an end runs on to the row before only where this interval is the outermost
+                    // of that interval's partners; elsewhere it borders a notch (counted below)
+                    if b.iter().find(|x| overlap(x, p)).is_some_and(|x| core::ptr::eq(x, r)) {
+                        length += sqrt(dz * dz + (r.lo - p.lo) * (r.lo - p.lo));
+                    }
+                    if b.iter().rev().find(|x| overlap(x, q)).is_some_and(|x| core::ptr::eq(x, r)) {
+                        length += sqrt(dz * dz + (r.hi - q.hi) * (r.hi - q.hi));
+                    }
+                }
+                _ => length += r.hi - r.lo,
+            }
+        }
+        for p in a {
+            let mut prev: Option<&Interval> = None;
+            let mut any = false;
+            for r in b.iter().filter(|r| overlap(p, r)) {
+                if let Some(q) = prev {
+                    length += (r.lo - q.hi).max(0.);
+                }
+                prev = Some(r);
+                any = true;
+            }
+            if !any {
+                length += p.hi - p.lo;
             }
         }
     }
+    length
 }
 
 #[cfg(test)]
@@ -386,6 +429,45 @@ mod tests {
         }
         measure(&ls, false, v(0., 0.), v(1., 0.), BAND, &mut c);
         assert_eq!(c.channels, 2);
+    }
+    /// laminae 0.05 cm apart whose air at lateral offset z is the interval `at(z)`
+    fn solid(at: impl Fn(f64) -> Option<(f64, f64)>) -> Vec<Lamina> {
+        let mut ls: Vec<Lamina> = (0..ROWS).map(|i| Lamina::new((i as f64 - 32.) * 0.05)).collect();
+        for l in &mut ls {
+            if let Some((lo, hi)) = at(l.z) {
+                l.air[0] = vec![v(lo, -1.), v(hi, -1.), v(hi, 1.), v(lo, 1.)];
+            }
+            l.bound();
+        }
+        ls
+    }
+    #[test]
+    fn perimeter_is_the_boundarys_length_not_a_staircase() {
+        // a circle, an ellipse lying along u and one lying across it, and a ring with a hole
+        let mut c = Cut::default();
+        let circle = solid(|z| (z.abs() < 1.).then(|| (-sqrt(1. - z * z), sqrt(1. - z * z))));
+        measure(&circle, false, v(0., 0.), v(1., 0.), f64::INFINITY, &mut c);
+        assert!((c.perimeter / (2. * PI) - 1.).abs() < 0.015, "circle: {} vs {}", c.perimeter, 2. * PI);
+        // Ramanujan's approximation for an ellipse's circumference
+        let ellipse = |a: f64, b: f64| PI * (3. * (a + b) - sqrt((3. * a + b) * (a + 3. * b)));
+        for (a, b) in [(0.5, 1.5), (1.5, 0.5)] {
+            // half-axis a along u, b across (z)
+            let ls = solid(|z| (z.abs() < b).then(|| (-a * sqrt(1. - z * z / (b * b)), a * sqrt(1. - z * z / (b * b)))));
+            measure(&ls, false, v(0., 0.), v(1., 0.), f64::INFINITY, &mut c);
+            assert!((c.perimeter / ellipse(a, b) - 1.).abs() < 0.02, "ellipse {a}×{b}: {} vs {}", c.perimeter, ellipse(a, b));
+        }
+        // two discs side by side along u: twice one disc's boundary
+        let mut two = solid(|z| (z.abs() < 0.5).then(|| (-1.5 - sqrt(0.25 - z * z), -1.5 + sqrt(0.25 - z * z))));
+        for l in &mut two {
+            if l.z.abs() < 0.5 {
+                let h = sqrt(0.25 - l.z * l.z);
+                l.air[1] = vec![v(1.5 - h, -1.), v(1.5 + h, -1.), v(1.5 + h, 1.), v(1.5 - h, 1.)];
+            }
+            l.bound();
+        }
+        measure(&two, false, v(0., 0.), v(1., 0.), f64::INFINITY, &mut c);
+        assert_eq!(c.channels, 2);
+        assert!((c.perimeter / (2. * PI) - 1.).abs() < 0.02, "two discs: {} vs {}", c.perimeter, 2. * PI);
     }
     #[test]
     fn station_interpolation_has_no_overshoot() {
