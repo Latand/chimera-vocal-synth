@@ -105,10 +105,12 @@ pub fn presets(body: BodyMix) -> Vec<Preset> {
                 p.side_blade = 0.6;
             }
             "bunched" => {
-                // dorsum bunched under the palate, tip low, root drawn back (concave posterior)
+                // dorsum bunched under the palate, tip low, root drawn back (concave posterior).
+                // An approximant: the dorsum stays about 3 mm off the palate (at 8.0 it pressed
+                // into it and shut the tract over 2 cm, which the feature check now refuses).
                 a = posture("ə", body);
-                a.tb_x = 2.6;
-                a.tb_y = 8.0;
+                a.tb_x = 2.7;
+                a.tb_y = 7.5;
                 a.root = -0.7;
                 let tip = super::super::human::rest_tip(a.jaw, a.tb_x, a.tb_y);
                 a.tt_x = tip.x;

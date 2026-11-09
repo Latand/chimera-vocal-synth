@@ -240,3 +240,26 @@ fn the_presets_make_the_tongue_shapes_the_research_lists() {
     let failed: Vec<_> = checks.iter().filter(|c| !c.pass).map(|c| format!("{} / {}: {}", c.preset, c.feature, c.measured)).collect();
     assert!(failed.is_empty(), "{failed:#?}");
 }
+
+/// Review finding: the bunched /ɹ/ pressed its dorsum into the palate and shut the tract over
+/// 2 cm, and the feature check passed it (a closure is "below 60 %" of anything).
+#[test]
+fn bunched_r_is_an_open_approximant() {
+    let all = presets(BodyMix::MALE);
+    let p = all.iter().find(|p| p.name == "bunched").unwrap();
+    let mut m = Tract3d::new(BODY_MALE);
+    let mut f = Tract3dFrame::default();
+    m.compute(&p.artic, &p.shape, &mut f).unwrap();
+    for c in f.cuts().iter().filter(|c| c.s >= 0.5) {
+        assert!(c.channels >= 1 && c.area >= 0.15, "closed or nearly closed at s = {:.2} cm: {:.3} cm², {} channel(s)", c.s, c.area, c.channels);
+    }
+    // the check itself refuses the posture that used to pass
+    let mut shut = p.artic;
+    shut.tb_x = 2.6;
+    shut.tb_y = 8.0;
+    m.compute(&shut, &p.shape, &mut f).unwrap();
+    let mut checks = Vec::new();
+    chimera::anatomy::tract3d::check_one(&m, &f, "bunched", &p.shape, 0.9, BODY_MALE.scale, &mut checks);
+    let open = checks.iter().find(|c| c.feature == "open along its whole length").expect("the open-path check");
+    assert!(!open.pass, "a closed tract passed as a bunched /ɹ/: {}", open.measured);
+}

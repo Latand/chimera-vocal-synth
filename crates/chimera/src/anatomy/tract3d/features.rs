@@ -161,7 +161,17 @@ pub fn check_one(m: &Tract3d, f: &Tract3dFrame, name: &str, shape: &ShapeParams,
             let between = (ph..pal).map(|i| a.area[i]).fold(0f64, f64::max);
             let front: f64 = (pal..a.s.len()).map(|i| a.area[i] * STEP).sum();
             push("pharyngeal and palatal constrictions", format!("{:.2} cm² at s/L {:.2}, {:.2} cm² at s/L {:.2}; {:.2} cm² between", a.area[ph], a.s[ph] / l, a.area[pal], a.s[pal] / l, between), "both below 60 % of the area between them", hinge(a.area[ph] - 0.6 * between) + hinge(a.area[pal] - 0.6 * between));
+            // an approximant: the air passes everywhere. A closure would also pass the line
+            // above (zero is below 60 % of anything), so the open path is checked on its own.
+            let from = (0..a.s.len()).find(|&i| a.s[i] >= 0.5).unwrap_or(0);
+            let narrowest = (from..a.s.len()).map(|i| a.area[i]).fold(f64::INFINITY, f64::min);
+            let shut = (from..a.s.len()).filter(|&i| a.channels[i] == 0 || a.area[i] <= 0.).count();
+            push("open along its whole length", format!("narrowest cut {narrowest:.2} cm², {shut} cut(s) without air"), "every cut ≥ 0.15 cm² (an approximant, no closure)", hinge(0.15 - narrowest) * 5. + shut as f64 * 0.3);
             push("large front cavity", format!("{front:.1} cm³ in front of the palatal constriction"), "≥ 10 cm³", hinge(10. - front) * 0.1);
+            // the tip stays down behind the lower teeth (the retroflex shape raises it)
+            let tip = *m.parts.dorsal.last().unwrap();
+            let edge = m.tract.p(7.12, 7.95).y;
+            push("tip low", format!("tip {:.2} cm below the upper incisors' edge", edge - tip.y), "≥ 0.2 cm below", hinge(0.2 * k - (edge - tip.y)));
         }
         "flat" => {
             let g = max_surface_groove(&m.parts, 0.2, 0.97);
