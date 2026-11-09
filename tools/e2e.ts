@@ -165,16 +165,21 @@ async function run(viewport: { width: number; height: number }, tag: string) {
   await page.waitForTimeout(300);
   await page.getByRole("button", { name: "Stop" }).click();
   await page.waitForTimeout(300);
-  // Lab uses the real wasm geometry and the current engine for sound.
+  // Lab: the engine's 3D geometry in every view, its controls, and the current engine's sound
   await page.getByRole("radio", { name: "Lab", exact: true }).click();
   await page.getByRole("heading", { name: "Tract", exact: true }).waitFor();
-  await page.locator(".lab-presets button").filter({ hasText: /^a$/ }).click();
-  for (const plane of ["coronal", "axial", "midsagittal", "perpendicular"]) {
-    await page.getByRole("button", { name: plane, exact: true }).click();
+  await page.getByRole("button", { name: "open vowel /a/" }).click();
+  for (const plane of ["Sagittal", "Coronal", "Axial", "Along tract"]) {
+    await page.getByRole("group", { name: "Plane" }).getByRole("button", { name: plane }).click();
     if (!(await page.locator(".lab-cut").isVisible())) errors.push(`[${tag}] lab cut missing for ${plane}`);
   }
-  await page.getByRole("button", { name: "Solo Tongue", exact: true }).click();
+  const area0 = await page.locator(".lab-cut-screen .lab-readout").textContent();
+  await page.getByRole("button", { name: "grooved /s/" }).click();
+  const area1 = await page.locator(".lab-cut-screen .lab-readout").textContent();
+  if (area0 === area1) errors.push(`[${tag}] lab cut did not change with the posture`);
+  await page.getByRole("button", { name: "Show only Tongue" }).click();
   await page.getByRole("button", { name: "Show all", exact: true }).click();
+  await page.getByRole("group", { name: "Controls for" }).getByRole("button", { name: "Midline" }).click();
   await page.getByRole("button", { name: "Hold", exact: true }).click();
   await page.waitForTimeout(800);
   const labRms = await page.evaluate(() => {

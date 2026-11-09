@@ -304,7 +304,7 @@ export interface CreatureTelemetry {
   call: string | null;
 }
 
-/** Inspection geometry in cm; x forward, y up, z speaker-right. */
+/** The 3D tract (lab mode): centimetres, x forward, y up, z to the speaker's right. */
 export interface Tract3dSpec {
   key: string;
   element: string;
@@ -314,12 +314,23 @@ export interface Tract3dSpec {
   default: number;
   doc: string;
 }
+/** 3D parameters as offsets from what the articulators imply (the engine's `derive`). */
 export type Tract3dShape = Record<string, number>;
 export interface Tract3dPreset {
   name: string;
+  label: string;
   artic: HumanArtic;
   shape: Tract3dShape;
 }
+export interface Tract3dRegion {
+  tag: string;
+  area: number;
+  minZ: number;
+  maxZ: number;
+  minU: number;
+  maxU: number;
+}
+/** A cut through the laminae: per lamina (z), the air intervals along u from the origin. */
 export interface Tract3dCut {
   origin: { x: number; y: number };
   u: { x: number; y: number };
@@ -331,22 +342,35 @@ export interface Tract3dCut {
   width: number;
   height: number;
   fold: boolean;
-  rows: {
-    z: number;
-    intervals: { lo: number; hi: number; component: number }[];
-  }[];
-  regions: {
-    tag: string;
-    area: number;
-    minZ: number;
-    maxZ: number;
-    minU: number;
-    maxU: number;
-  }[];
+  rows: { z: number; intervals: { lo: number; hi: number; component: number }[] }[];
+  regions: Tract3dRegion[];
+}
+export interface Tract3dSlice {
+  s: number;
+  area: number;
+  channels: number;
+  width: number;
+  height: number;
+  fold: boolean;
+  origin: { x: number; y: number };
+  u: { x: number; y: number };
+}
+export type Tract3dPlane =
+  | null
+  | { kind: "coronal" | "axial"; at: number | null; cut: Tract3dCut }
+  | { kind: "sagittal"; at: number | null; step: number; rows: { y: number; x: number[] }[] };
+export interface Tract3dMesh {
+  element: string;
+  positions: number[];
+  indices: number[];
+  lines: number[];
 }
 export interface Tract3dFrame {
+  /** the parameters in use (derived + offsets) */
+  shape: Tract3dShape;
+  /** what the articulators alone imply */
+  derived: Tract3dShape;
   centreline: { x: number; y: number }[];
-  slices: Tract3dCut[];
   areaFn: {
     s: number[];
     area: number[];
@@ -360,17 +384,18 @@ export interface Tract3dFrame {
     minArea: number;
     minS: number;
   };
-  cavities: {
-    kind: string;
-    side: number;
-    attachment: number;
-    volume: number;
-    neckArea: number;
-    depth: number;
-  }[];
-  shape: Tract3dShape;
-  meshes: { element: string; positions: number[]; indices: number[] }[];
-  midsagittal: [string, { x: number; y: number }[]][];
-  coronal: Tract3dCut;
-  axial: Tract3dCut;
+  slices: Tract3dSlice[];
+  cut: Tract3dCut;
+  plane: Tract3dPlane;
+  cavities: { kind: string; side: number; attachment: number; volume: number; neckArea: number; depth: number }[];
+  meshes: Tract3dMesh[] | null;
+}
+export interface Tract3dWant {
+  /** include the element meshes (default true) */
+  meshes?: boolean;
+  /** which perpendicular cut to return with its rows, 0 (glottis) … 1 (lips) */
+  cut?: number;
+  plane?: "coronal" | "axial" | "sagittal";
+  /** the plane's position, template cm: x for coronal, y for axial, z for sagittal */
+  at?: number;
 }

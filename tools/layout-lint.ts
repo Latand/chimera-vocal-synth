@@ -302,7 +302,7 @@ async function main() {
     const mode = (m: string) => page.getByRole("radio", { name: new RegExp(`^${m}$`, "i") }).click();
     // every encoder page of the screens on the right (each page has its own labels)
     const pages = async (state: string) => {
-      const tabs = page.locator(".right .enc-tab");
+      const tabs = page.locator(".right .enc-tab, .lab-layout .enc-tab");
       for (let i = 1; i < (await tabs.count()); i++) {
         await tabs.nth(i).click();
         await check(`${state}, controls page ${(await tabs.nth(i).textContent())?.trim()}`);
@@ -344,6 +344,24 @@ async function main() {
         // the gestural score with a phrase in it, mid-utterance
         await page.getByRole("button", { name: /^Speak$/ }).click();
         await check("speak (running), speaking", 900);
+      }
+      if (m === "lab") {
+        // every element's controls (own labels and units), every plane, and a posture with
+        // several channels in its cut
+        const elements = page.getByRole("group", { name: "Controls for" }).getByRole("button");
+        for (let i = 1; i < (await elements.count()); i++) {
+          await elements.nth(i).click();
+          const name = (await elements.nth(i).textContent())?.trim();
+          await check(`lab (running), ${name} controls`);
+          await pages(`lab (running), ${name}`);
+        }
+        await elements.first().click();
+        for (const plane of ["Sagittal", "Coronal", "Axial", "Along tract"]) {
+          await page.getByRole("group", { name: "Plane" }).getByRole("button", { name: plane }).click();
+          await check(`lab (running), ${plane} plane`);
+        }
+        await page.getByRole("button", { name: "lateral /l/" }).click();
+        await check("lab (running), /l/");
       }
       if (m === "bestiary") {
         // each creature has its own names and parameters

@@ -5,7 +5,8 @@
 
 use chimera::airway::frequency::{find_peaks, transfer_function};
 use chimera::anatomy::human::{BodyMix, HumanArtic, HumanFrame};
-use chimera::anatomy::tract3d::{Tract3d, Tract3dFrame, ShapeParams, Cut};
+use chimera::anatomy::geom::v;
+use chimera::anatomy::tract3d::{Cut, Row, ShapeParams, Tract3d, Tract3dFrame};
 use chimera::control::beat_player::BeatPlayer;
 use chimera::creatures::voice::CreatureVoice;
 use chimera::math;
@@ -23,8 +24,8 @@ struct Model {
     body: BodyMix,
     fs: f64,
     airway: HumanAirway,
-    tract3d: Tract3d,
-    frame3d: Tract3dFrame,
+    /// the lab's 3D geometry, made on its first use (only the lab asks for it)
+    tract3d: Option<Box<(Tract3d, Tract3dFrame)>>,
 }
 
 #[derive(Default)]
@@ -71,7 +72,7 @@ fn dispatch(st: &mut State, req: &Value) -> Res {
             let i = match st.models.iter().position(|x| x.body == body && x.fs == fs * m) {
                 Some(i) => i,
                 None => {
-                    st.models.push(Model { id: st.next_model, body, fs: fs * m, airway: HumanAirway::new(fs * m, body.body()), tract3d: Tract3d::new(body.body()), frame3d: Tract3dFrame::default() });
+                    st.models.push(Model { id: st.next_model, body, fs: fs * m, airway: HumanAirway::new(fs * m, body.body()), tract3d: None });
                     st.next_model += 1;
                     st.models.len() - 1
                 }
@@ -94,20 +95,7 @@ fn dispatch(st: &mut State, req: &Value) -> Res {
         }
         "tract3dSpecs" => to_json(&Tract3d::specs()),
         "tract3dPresets" => to_json(&chimera::anatomy::tract3d::presets(arg(req, "body")?)),
-        "tract3d" => {
-            let a: HumanArtic = arg(req, "artic")?;
-            let shape = arg::<Option<ShapeParams>>(req, "shape")?.unwrap_or_default();
-            let m = model(st, req)?;
-            m.tract3d.compute(&a, &shape, &mut m.frame3d)?;
-            let n=m.frame3d.area_fn.s.len();
-            let meshes=if req.pointer("/want/meshes").and_then(Value::as_bool).unwrap_or(true) {to_json(&m.tract3d.meshes())?}else{Value::Null};
-            let mut coronal=Cut::default();let mut axial=Cut::default();
-            let x=req.pointer("/want/x").and_then(Value::as_f64).unwrap_or(4.0)*m.body.body().scale;
-            let y=req.pointer("/want/y").and_then(Value::as_f64).unwrap_or(7.0)*m.body.body().scale;
-            m.tract3d.cut_plane(chimera::anatomy::geom::v(x,y),chimera::anatomy::geom::v(0.,1.),&mut coronal);
-            m.tract3d.cut_plane(chimera::anatomy::geom::v(x,y),chimera::anatomy::geom::v(1.,0.),&mut axial);
-            Ok(json!({"centreline":m.frame3d.centreline,"slices":&m.frame3d.slices[..n],"areaFn":m.frame3d.area_fn,"cavities":m.frame3d.cavities,"shape":m.frame3d.shape,"meshes":meshes,"midsagittal":m.tract3d.midsagittal(),"coronal":coronal,"axial":axial}))
-        }
+        "tract3d" => tract3d(st, req),
         "restTip" => to_json(&chimera::anatomy::human::rest_tip(arg(req, "jaw")?, arg(req, "tbX")?, arg(req, "tbY")?)),
         "frame" => {
             let a: HumanArtic = arg(req, "artic")?;
@@ -242,4 +230,59 @@ pub extern "C" fn chimera_result_ptr() -> *const u8 {
 #[unsafe(no_mangle)]
 pub extern "C" fn chimera_result_len() -> usize {
     STATE.with(|s| s.borrow().result.len())
+}
+
+/// The lab's geometry for a posture: the area function and cut summaries every call, the
+/// selected cut's rows, one anatomical plane, and (when asked) the element meshes.
+fn tract3d(st: &mut State, req: &Value) -> Res {
+    let a: HumanArtic = arg(req, "artic")?;
+    let shape = arg::<Option<ShapeParams>>(req, "shape")?.unwrap_or_default();
+    let want = req.get("want").cloned().unwrap_or(Value::Null);
+    let m = model(st, req)?;
+    let body = m.body.body();
+    let geometry = m.tract3d.get_or_insert_with(|| Box::new((Tract3d::new(body), Tract3dFrame::default())));
+    let (t, f) = (&mut geometry.0, &mut geometry.1);
+    t.compute(&a, &shape, f)?;
+    let n = f.area_fn.s.len();
+    let pick = want.get("cut").and_then(Value::as_f64).unwrap_or(0.8).clamp(0., 1.);
+    let cut = &f.cuts()[((n - 1) as f64 * pick).round() as usize];
+    let slices: Vec<Value> = f.cuts().iter().map(|c| json!({"s": c.s, "area": c.area, "channels": c.channels, "width": c.width, "height": c.height, "fold": c.fold, "origin": c.origin, "u": c.u})).collect();
+    let k = body.scale;
+    let at = want.get("at").and_then(Value::as_f64);
+    let plane = match want.get("plane").and_then(Value::as_str).unwrap_or("none") {
+        kind @ ("coronal" | "axial") => {
+            let mut c = Cut::default();
+            let (o, u) = if kind == "coronal" { (v(at.unwrap_or(4.5) * k, 8. * k), v(0., 1.)) } else { (v(4. * k, at.unwrap_or(8.3) * k), v(1., 0.)) };
+            t.cut_plane(o, u, &mut c);
+            json!({"kind": kind, "at": at, "cut": c})
+        }
+        "sagittal" => {
+            let z = at.unwrap_or(0.) * k;
+            let mut rows = Vec::new();
+            let mut row = Row::default();
+            let (y0, y1) = (f.centreline[0].y - 0.5 * k, 12. * k);
+            let mut y = y0;
+            while y <= y1 {
+                t.air_intervals(y, z, &mut row);
+                if row.count > 0 {
+                    rows.push(json!({"y": y, "x": row.intervals[..row.count].iter().flat_map(|q| [q.lo, q.hi]).collect::<Vec<f64>>()}));
+                }
+                y += 0.05 * k;
+            }
+            json!({"kind": "sagittal", "at": at, "step": 0.05 * k, "rows": rows})
+        }
+        _ => Value::Null,
+    };
+    let meshes = if want.get("meshes").and_then(Value::as_bool).unwrap_or(true) { to_json(&t.meshes())? } else { Value::Null };
+    Ok(json!({
+        "shape": f.shape,
+        "derived": t.derive(&a),
+        "centreline": f.centreline,
+        "areaFn": f.area_fn,
+        "slices": slices,
+        "cut": cut,
+        "plane": plane,
+        "cavities": f.cavities,
+        "meshes": meshes,
+    }))
 }

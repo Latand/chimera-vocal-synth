@@ -30,14 +30,23 @@ export interface ViewOptions {
   threeD: boolean;
 }
 
+/** Lab mode: what the 3D tract shows. The 3D offsets never reach the voice (phase 1). */
 export interface LabState {
+  /** 3D parameters as offsets from what the articulators imply */
   shape: Record<string, number>;
-  slice: number;
-  plane: "perpendicular" | "midsagittal" | "coronal" | "axial";
-  position: number;
+  /** the perpendicular cut's place along the centreline, 0 (glottis) … 1 (lips) */
+  cut: number;
+  plane: "perpendicular" | "sagittal" | "coronal" | "axial";
+  /** each plane's position, template cm: lateral z, front-back x, height y */
+  at: { sagittal: number; coronal: number; axial: number };
+  /** elements hidden in the 3D view */
   hidden: string[];
+  /** the element whose controls are shown and whose lines are lit */
+  element: string;
   cutaway: boolean;
+  xray: boolean;
   explode: boolean;
+  /** the model follows the live voice's articulators */
   follow: boolean;
 }
 interface State {
@@ -130,7 +139,7 @@ let session = 0;
 const FIRST_BEAT = BEAT_PRESETS[0];
 
 export const useStore = create<State>((set, get) => ({
-  lab: { shape: {}, slice: 0.8, plane: "perpendicular", position: 4, hidden: [], cutaway: true, explode: false, follow: false },
+  lab: { shape: {}, cut: 0.82, plane: "perpendicular", at: { sagittal: 0, coronal: 4.5, axial: 8.3 }, hidden: [], element: "tongue", cutaway: true, xray: false, explode: false, follow: false },
   setLab: (patch) => set((s) => ({ lab: { ...s.lab, ...patch } })),
   started: false,
   starting: false,

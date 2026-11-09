@@ -260,20 +260,13 @@ export function creaturePreview(id: string, params?: Record<string, number>): Cr
   return call("creaturePreview", { id, params: params ?? {} });
 }
 
-// Inspection calls stay on the page's model; the worklet does not consume 3D-only offsets.
+// The lab's 3D geometry runs on the page's model; the worklet never reads the 3D offsets.
 export function tract3dSpecs(): import("./types.ts").Tract3dSpec[] {
   return call("tract3dSpecs");
 }
-export function tract3dPresets(
-  body: BodyMix,
-): import("./types.ts").Tract3dPreset[] {
+export function tract3dPresets(body: BodyMix): import("./types.ts").Tract3dPreset[] {
   return call("tract3dPresets", { body });
 }
-export function tract3d(
-  m: AirwayModel,
-  artic: HumanArtic,
-  shape: import("./types.ts").Tract3dShape,
-  want: { meshes?: boolean; x?: number; y?: number } = {},
-): import("./types.ts").Tract3dFrame {
+export function tract3d(m: AirwayModel, artic: HumanArtic, shape: import("./types.ts").Tract3dShape, want: import("./types.ts").Tract3dWant = {}): import("./types.ts").Tract3dFrame {
   return call("tract3d", { model: m.model, artic, shape, want });
 }
