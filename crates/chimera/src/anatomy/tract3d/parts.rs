@@ -151,6 +151,21 @@ impl Arch {
     pub fn outer_max(&self) -> f64 {
         self.outer.iter().map(|o| o.1).fold(0., f64::max)
     }
+    /// lateral offset of the outer edge at template x (0 in front of the incisors' row, the
+    /// arch's widest behind its back)
+    pub fn outer_at(&self, x: f64) -> f64 {
+        if x >= self.outer[0].0 {
+            return 0.;
+        }
+        for i in 0..ARCH_SAMPLES - 1 {
+            let (x0, a0) = self.outer[i];
+            let (x1, a1) = self.outer[i + 1];
+            if (x0 >= x) != (x1 >= x) {
+                return lerp(a0, a1, (x - x0) / (x1 - x0));
+            }
+        }
+        self.outer_max()
+    }
 }
 
 pub struct Parts {
@@ -971,6 +986,34 @@ impl Parts {
                 if at <= top {
                     let x = self.map.p(self.upper.x_out(at) + gap, 8.).x + slide;
                     l.tissue[T_CHEEK[0]].extend_from_slice(&[v(x, -5. * k), v(15. * k, -5. * k), v(15. * k, 15. * k), v(x, 15. * k)]);
+                    // between the tooth rows the cheek bulges in when the jaw is down (the muscle
+                    // in it keeps it against the teeth): up to half the rows' thickness at the
+                    // middle of the gap, nothing where the rows meet. The air between the rows
+                    // ends in a rounded wedge, where it ended against a flat wall.
+                    if slide == 0. && gap == 0. {
+                        let (x_in, x_front) = (self.upper.x_in(at), self.upper.x_out(at).max(self.upper.x_in(at)));
+                        let t = &mut l.tissue[T_CHEEK[1]];
+                        let section = |xt: f64| -> (f64, f64, f64) {
+                            let (hi, lo) = (self.upper_occlusal(xt, -CUSP), self.lower_occlusal(xt, 0.));
+                            let half = 0.5 * (hi.y - lo.y);
+                            let reach = (0.55 * k).min(1.6 * half);
+                            let inside = (self.upper.outer_at(xt) - at).max(0.) * k;
+                            let h = if half > 0. && inside < reach { half * sqrt(1. - inside / reach) } else { 0. };
+                            (self.map.p(xt, 8.).x, 0.5 * (hi.y + lo.y), h)
+                        };
+                        const N: usize = 8;
+                        for i in 0..=N {
+                            let (px, mid, h) = section(lerp(x_in, x_front, i as f64 / N as f64));
+                            t.push(v(px, mid + h));
+                        }
+                        let (_, mid, h) = section(x_front);
+                        t.push(v(x + 0.2 * k, mid + h));
+                        t.push(v(x + 0.2 * k, mid - h));
+                        for i in (0..=N).rev() {
+                            let (px, mid, h) = section(lerp(x_in, x_front, i as f64 / N as f64));
+                            t.push(v(px, mid - h));
+                        }
+                    }
                 } else if at < top + gap {
                     let hi = self.upper_occlusal(self.upper.back() + 1., 1.).y;
                     let lo = self.lower_occlusal(self.lower.back() + 1., 1.).y;
