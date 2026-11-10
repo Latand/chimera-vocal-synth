@@ -278,7 +278,7 @@ export function LabPanel() {
         ) : (
           <p className="lab-readout">
             <b>{fmt(shown.area, 2)} cm²</b> · {shown.channels} {shown.channels === 1 ? "channel" : "channels"} · {fmt(shown.width, 1)} × {fmt(shown.height, 1)} cm
-            {shown.fold ? " · neighbouring cuts cross at this bend" : ""}
+            {shown.fold ? " · on the bend (this cut overlaps the next)" : ""}
             {shown.regions.length > 1 ? ` · regions ${shown.regions.map((r) => `${r.tag} ${fmt(r.area)}`).join(", ")} cm²` : ""}
           </p>
         )}

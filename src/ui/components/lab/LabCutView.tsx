@@ -1,8 +1,9 @@
 /**
  * One cut through the 3D tract, drawn to scale on a centimetre grid: a perpendicular cut, a
  * coronal or axial plane (rows of air per lamina, joined row to row so the outline is smooth), or
- * a sagittal plane at any lateral offset (rows of air per height). The main region is amber,
- * separate side regions blue.
+ * a sagittal plane at any lateral offset (rows of air per height, joined the same way, on the
+ * same grid: it was the one plane drawn without it, as a stack of bars). The main region is
+ * amber, separate side regions blue.
  */
 import { useRef } from "react";
 import { usePhosphor } from "../../usePhosphor.ts";
@@ -113,13 +114,52 @@ export function LabCutView({ drawing, size }: { drawing: CutDrawing | null; size
         const s2 = Math.min((w - 24) / (x1 - x0), (h - 24) / (y1 - y0 + dr.plane.step));
         const ox = (w - (x1 - x0) * s2) / 2 - x0 * s2, oy = h - 12 + y0 * s2;
         bar = s2;
-        const fill = new Path2D();
-        for (const r of rows) for (let j = 0; j + 1 < r.x.length; j += 2) fill.rect(ox + r.x[j] * s2, oy - (r.y + dr.plane.step / 2) * s2, (r.x[j + 1] - r.x[j]) * s2, dr.plane.step * s2 + 0.4);
+        // the grid: 1 cm, from the body's own origin (the glottis' height at rest, x = 0)
+        for (let i = Math.floor(-ox / s2); i <= Math.ceil((w - ox) / s2); i++) seg(ctx, ox + i * s2, 0, ox + i * s2, h, V.frame, i === 0 ? 1 : 0.6, { alpha: i === 0 ? 1 : 0.7 });
+        for (let i = Math.floor((oy - h) / s2); i <= Math.ceil(oy / s2); i++) seg(ctx, 0, oy - i * s2, w, oy - i * s2, V.frame, i === 0 ? 1 : 0.6, { alpha: i === 0 ? 1 : 0.7 });
+        // each stretch of air joins the stretch it overlaps in the row above it
+        const at = (x: number, y: number): [number, number] => [ox + x * s2, oy - y * s2];
+        const fill = new Path2D(), edge = new Path2D();
+        const half = dr.plane.step / 2;
+        const quad = (pts: [number, number][]) => {
+          fill.moveTo(...pts[0]);
+          for (const q of pts.slice(1)) fill.lineTo(...q);
+          fill.closePath();
+        };
+        const pairs = (r: { x: number[] }) => {
+          const out: [number, number][] = [];
+          for (let j = 0; j + 1 < r.x.length; j += 2) out.push([r.x[j], r.x[j + 1]]);
+          return out;
+        };
+        rows.forEach((r, k) => {
+          const above = rows[k + 1] ? pairs(rows[k + 1]) : [], below = rows[k - 1] ? pairs(rows[k - 1]) : [];
+          for (const [lo, hi] of pairs(r)) {
+            const next = above.find(([a, b]) => a <= hi && lo <= b);
+            if (next) {
+              quad([at(lo, r.y), at(hi, r.y), at(next[1], rows[k + 1].y), at(next[0], rows[k + 1].y)]);
+              edge.moveTo(...at(lo, r.y));
+              edge.lineTo(...at(next[0], rows[k + 1].y));
+              edge.moveTo(...at(hi, r.y));
+              edge.lineTo(...at(next[1], rows[k + 1].y));
+            } else {
+              quad([at(lo, r.y), at(hi, r.y), at(hi, r.y + half), at(lo, r.y + half)]);
+              edge.moveTo(...at(lo, r.y + half));
+              edge.lineTo(...at(hi, r.y + half));
+            }
+            if (!below.some(([a, b]) => a <= hi && lo <= b)) {
+              quad([at(lo, r.y - half), at(hi, r.y - half), at(hi, r.y), at(lo, r.y)]);
+              edge.moveTo(...at(lo, r.y - half));
+              edge.lineTo(...at(hi, r.y - half));
+            }
+          }
+        });
         ctx.save();
-        ctx.globalAlpha = 0.7;
+        ctx.globalAlpha = 0.28;
         ctx.fillStyle = V.amber;
-        ctx.fill(fill);
+        ctx.fill(fill, "nonzero");
         ctx.restore();
+        beam(ctx, edge, V.amber, 1.4, { hot: true });
+        label(ctx, "↑ up", ox + 4 > 60 ? 8 : ox + 4, 14, { size: 9, color: V.blueMid, ls: 0.12 });
         label(ctx, "front →", w - 6, h - 6, { size: 9, color: V.blueMid, align: "right", ls: 0.12 });
       }
     }
