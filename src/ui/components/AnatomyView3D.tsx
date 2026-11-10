@@ -134,8 +134,9 @@ export function AnatomyView3D(props: { slots?: SlotsFn; info?: InfoFn; showForma
     let cutaway = true;
     /** the view the head is shown from: opened, mostly from the cut's side; whole, from the front and side */
     const homePose = () => {
-      // with the readouts the head is drawn smaller, to leave their corner free
-      const p = scene.pose(cutaway ? "side" : "three", true, facing, readoutsRef.current && w >= 560 ? 1.3 : 1.08);
+      // with the readouts the head is drawn smaller, to leave their corner free (its stand ran
+      // under the first readout's digits)
+      const p = scene.pose(cutaway ? "side" : "three", true, facing, readoutsRef.current && w >= 560 ? 1.4 : 1.08);
       if (cutaway) {
         // a little towards the face, so the cut face keeps its depth
         const d = p.position.clone().sub(p.target);
@@ -187,7 +188,7 @@ export function AnatomyView3D(props: { slots?: SlotsFn; info?: InfoFn; showForma
       camera.aspect = Math.max(1, w) / Math.max(1, h);
       // on a wide screen the head sits left of centre, leaving the right for the readouts
       if (w < 560 || !readoutsRef.current) camera.clearViewOffset();
-      else camera.setViewOffset(w, h, 0.14 * w, 0.03 * h, w, h);
+      else camera.setViewOffset(w, h, 0.17 * w, 0.03 * h, w, h);
       camera.updateProjectionMatrix();
     };
     const ro = new ResizeObserver(fit);
