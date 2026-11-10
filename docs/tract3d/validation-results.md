@@ -106,10 +106,10 @@ geometry that answers it is model-design.md §0.3. The same command on both:
 - **The lower pharynx's channels.** The fossae are pouches beside the laryngeal tube with the
   aryepiglottic folds between; how high the folds stand is fitted per speaker (0.58 cm for
   the male, 0.35 cm for the female). The nine sounds that still miss do so on one or two
-  cuts: three male sounds on one cut each 2.5–2.75 cm above the glottis (the MRI has three
-  regions where the model has already merged into one or, once, has five), and six female
-  sounds where the MRI's fossae begin one cut lower than the model's (0.75 cm above the
-  glottis; the fit ended with the fossae 1.0 cm deep, their bound).
+  cuts: three male sounds on one cut each near the top of the range the line covers (the
+  MRI still splits where the model has merged into one region or, once, has two more than
+  it), and six female sounds whose MRI splits one cut lower than the model's fossae begin
+  (the fit ended with the fossae 1.0 cm deep, their bound).
 - **The pharynx's cuts.** At the stations in the pharynx (0.3 and 0.45 of the tract's length)
   the male model's cuts are as close to the speaker as the other speaker's are, or closer
   (cut IoU 0.68 and 0.78 against 0.65 between the speakers; aspect error 0.52 and 0.23
