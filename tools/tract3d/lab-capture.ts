@@ -165,6 +165,62 @@ try {
   await phone.screenshot({ path: `${out}/${play}` });
   log.push(play);
   await phone.close();
+
+  // ---- added after the first 26 (their numbers stay comparable with older runs): the mouth
+  // opened wide and the rounded lips from the front, and the coronal plane through the origin
+  // in the CUT screen at desktop and phone width (its top lay over the axis label)
+  for (const [width, height, tag] of [[1440, 1000, "1440"], [390, 844, "390"]] as const) {
+    const lab = await open("?mode=lab", width, height);
+    await lab.getByRole("heading", { name: "Tract", exact: true }).waitFor();
+    const begin = lab.getByRole("button", { name: /start and listen/i });
+    if (await begin.count()) {
+      await begin.click();
+      await lab.getByRole("group", { name: "Listen" }).getByRole("button", { name: "Stop", exact: true }).click();
+    }
+    const press = async (label: string | RegExp, scope?: string) => {
+      const root = scope ? lab.getByRole("group", { name: scope }) : lab;
+      const b = root.getByRole("button", { name: label, exact: typeof label === "string" }).first();
+      if ((await b.count()) === 0) return log.push(`skipped: no button ${label}`), false;
+      await b.click();
+      return true;
+    };
+    const stage = lab.locator(".lab-stage");
+    const frame = async (label: string) => {
+      await lab.waitForTimeout(1200);
+      const file = name(label);
+      await stage.screenshot({ path: `${out}/${file}` });
+      log.push(file);
+    };
+    if (width === 1440) {
+      const whole = lab.getByRole("button", { name: "Cut away", exact: true }).first();
+      if ((await whole.getAttribute("aria-pressed")) === "true") await whole.click();
+      if (await press("mouth wide open", "Postures")) {
+        for (const [v, t] of [["front and side", "wide-three"], ["front", "wide-front"]] as const) {
+          await press(`View from the ${v}`);
+          await frame(t);
+        }
+        await press("View of the mouth");
+        await frame("wide-mouth");
+      }
+      for (const [p, t] of [["open vowel /a/", "a-front"], [/close back rounded \/u\//, "u-front"]] as const) {
+        await press(p, "Postures");
+        await press("View from the front");
+        await frame(t);
+      }
+    }
+    await press("open vowel /a/", "Postures");
+    if (await press("Coronal", "Plane")) {
+      await lab.getByRole("slider", { name: "Cut position" }).evaluate((el) => {
+        Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(el, "0");
+        el.dispatchEvent(new Event("input", { bubbles: true }));
+      });
+      await lab.waitForTimeout(600);
+      const file = name(`cut-screen-coronal-0-${tag}`);
+      await lab.locator(".lab-cut-screen").screenshot({ path: `${out}/${file}` });
+      log.push(file);
+    }
+    await lab.close();
+  }
 } finally {
   await browser.close();
   writeFileSync(`${out}/frames.txt`, log.join("\n") + "\n");
