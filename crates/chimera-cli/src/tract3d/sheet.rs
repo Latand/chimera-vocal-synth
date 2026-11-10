@@ -90,7 +90,7 @@ pub fn lamina_fill(svg: &mut Svg, m: &Tract3d, z: f64, y0: f64, y1: f64, step: f
     }
 }
 
-pub const COLORS: [&str; 8] = ["#f077a9", "#68b6e8", "#9dbbf6", "#65a6ce", "#8bdfbc", "#efb778", "#e0d2a9", "#7195bd"];
+pub const COLORS: [&str; 12] = ["#f077a9", "#68b6e8", "#9dbbf6", "#65a6ce", "#8bdfbc", "#efb778", "#e0d2a9", "#7195bd", "#c44d7c", "#a06a4a", "#d9a184", "#b7a0e0"];
 
 pub fn sheet(m: &Tract3d, f: &Tract3dFrame, title: &str) -> String {
     let k = m.tract.body.scale;
@@ -189,7 +189,7 @@ pub fn sheet(m: &Tract3d, f: &Tract3dFrame, title: &str) -> String {
 pub fn cut_detail(m: &Tract3d, c: &Cut, title: &str) -> String {
     let mut svg = Svg::new(1200, 900, title);
     let (cx, cy, sc) = (600., 450., 60.);
-    let names = ["tongue", "epiglottis", "upper lip", "lower lip", "upper teeth", "lower teeth", "pharynx wall", "pharynx wall", "fauces", "cheek", "cheek"];
+    let names = ["tongue", "epiglottis", "upper lip", "lower lip", "upper teeth", "lower teeth", "pharynx wall", "pharynx wall", "uvula", "cheek", "cheek between the rows", "aryepiglottic fold"];
     for i in 0..m.lamina_count() {
         let (_, tissue) = m.lamina_polygons(i);
         let z = m.lamina_z(i);
@@ -224,7 +224,7 @@ pub fn cut_detail(m: &Tract3d, c: &Cut, title: &str) -> String {
         }
     }
     cut_fill(&mut svg, c, "#ffffffcc", &|z, a| (cx + z * sc, cy - a * sc));
-    for (j, n) in names.iter().enumerate().take(9) {
+    for (j, n) in names.iter().enumerate() {
         svg.small(20., 50. + j as f64 * 16., n);
         svg.rect(100., 41. + j as f64 * 16., 20., 10., COLORS[j % COLORS.len()]);
     }

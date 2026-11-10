@@ -5,6 +5,7 @@ mod report;
 mod sheet;
 mod usc;
 mod volume;
+use chimera::anatomy::geom::v;
 use chimera::anatomy::human::{ArticKey, BodyMix, HumanArtic};
 use chimera::anatomy::tract3d::{posture, presets, Cut, ShapeParams, Tract3d, Tract3dFrame, SPECS};
 use chimera::util::optimize::{nelder_mead, NelderMeadOpts};
@@ -329,13 +330,26 @@ pub fn run(args: &[String]) -> Result<(), String> {
         }
         Some("cut") => {
             if args.len() < 4 {
-                return Err("tract3d cut <preset|artic.json> <s cm> <out.svg> [--body male|female|child]".into());
+                return Err("tract3d cut <preset|artic.json> <s cm | coronal:x | axial:y> <out.svg> [--body male|female|child]".into());
             }
             let body = crate::body_mix(option(args, "--body", "male"))?;
             let (a, p) = model_args(&args[1], body)?;
             let mut m = Tract3d::new(body.body());
             let mut f = Tract3dFrame::default();
             m.compute(&a, &p, &mut f)?;
+            // a whole plane: `coronal:<x cm>` or `axial:<y cm>` (template cm, as the lab's sliders)
+            if let Some((plane, at)) = args[2].split_once(':') {
+                let at: f64 = at.parse().map_err(|_| "invalid plane position")?;
+                let k = body.body().scale;
+                let (origin, u) = match plane {
+                    "coronal" => (v(at * k, 6. * k), v(0., 1.)),
+                    "axial" => (v(3. * k, at * k), v(1., 0.)),
+                    _ => return Err("the plane is coronal:<x> or axial:<y>".into()),
+                };
+                let mut c = Cut::default();
+                m.cut_plane(origin, u, &mut c);
+                return fs::write(&args[3], sheet::cut_detail(&m, &c, &format!("{} {plane} {at}", args[1]))).map_err(|e| e.to_string());
+            }
             let s: f64 = args[2].parse().map_err(|_| "invalid s")?;
             let i = f.area_fn.s.iter().position(|x| *x >= s).unwrap_or(f.area_fn.s.len() - 1);
             fs::write(&args[3], sheet::cut_detail(&m, &f.cuts()[i], &format!("{} at s = {s}", args[1]))).map_err(|e| e.to_string())
