@@ -16,7 +16,7 @@ export type SlotsFn = (m: VoiceModel, a: HumanArtic, f: HumanFrame, formants: nu
 export type InfoFn = (m: VoiceModel, f: HumanFrame, tele: TelemetryMessage | null) => string[];
 
 /** drawn over the face each frame, before the glow (Sing and Speak write the words at the mouth) */
-export type OverlayFn = (ctx: CanvasRenderingContext2D, r: FaceView, m: VoiceModel, f: HumanFrame, a: HumanArtic, size: { w: number; h: number; dt: number }) => void;
+export type OverlayFn = (ctx: CanvasRenderingContext2D, r: FaceView, m: VoiceModel, f: HumanFrame, a: HumanArtic, size: { w: number; h: number; dt: number; /** the lowest y free for text when a row of readouts lies under it */ floor?: number }) => void;
 
 /** the tract's length and mouth opening, then the live pitch and lungs */
 export const tractInfo: InfoFn = (_m, f, tele) => {

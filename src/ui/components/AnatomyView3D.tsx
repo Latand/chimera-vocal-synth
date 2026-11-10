@@ -27,6 +27,9 @@ import { ARTIC_KEYS, type HumanArtic } from "../../wasm/engine.ts";
 import type { TelemetryMessage } from "../../worklet/protocol.ts";
 
 /** how a fed head is shown */
+/** what the readouts' rows take of a narrow pane, px: the formants and info above, the slots below */
+const ROW_TOP = 58, ROW_BOTTOM = 92;
+
 export interface HeadView {
   /** the narrowest place's area, written beside it */
   calipers: boolean;
@@ -136,7 +139,9 @@ export function AnatomyView3D(props: { slots?: SlotsFn; info?: InfoFn; showForma
     const homePose = () => {
       // with the readouts the head is drawn smaller, to leave their corner free (its stand ran
       // under the first readout's digits)
-      const p = scene.pose(cutaway ? "side" : "three", true, facing, readoutsRef.current && w >= 560 ? 1.4 : 1.08);
+      // on a narrow screen the readouts are a row above the head and a row below it: the head
+      // fits between them (its stand lay under the lower row)
+      const p = scene.pose(cutaway ? "side" : "three", true, facing, readoutsRef.current && w >= 560 ? 1.4 : 1.08, rows() ? Math.max(0.4, (h - ROW_TOP - ROW_BOTTOM) / h) : 1);
       if (cutaway) {
         // a little towards the face, so the cut face keeps its depth
         const d = p.position.clone().sub(p.target);
@@ -172,6 +177,8 @@ export function AnatomyView3D(props: { slots?: SlotsFn; info?: InfoFn; showForma
     canvas.addEventListener("pointerleave", offHead);
 
     let w = 0, h = 0, dpr = 1;
+    /** a narrow screen with readouts: their rows take the top and the bottom of the pane */
+    const rows = () => !!readoutsRef.current && w > 0 && w < 560;
     const maxDpr = () => Math.min(feedRef.current?.maxDpr ?? 2, window.devicePixelRatio || 1);
     /** a fed head (no settings of its own to keep) goes back to its framing when its pane changes shape */
     let refit = false;
@@ -187,7 +194,8 @@ export function AnatomyView3D(props: { slots?: SlotsFn; info?: InfoFn; showForma
       gl.setSize(Math.max(1, w), Math.max(1, h), false);
       camera.aspect = Math.max(1, w) / Math.max(1, h);
       // on a wide screen the head sits left of centre, leaving the right for the readouts
-      if (w < 560 || !readoutsRef.current) camera.clearViewOffset();
+      if (!readoutsRef.current) camera.clearViewOffset();
+      else if (w < 560) camera.setViewOffset(w, h, 0, (ROW_BOTTOM - ROW_TOP) / 2, w, h);
       else camera.setViewOffset(w, h, 0.17 * w, 0.03 * h, w, h);
       camera.updateProjectionMatrix();
     };
@@ -294,7 +302,7 @@ export function AnatomyView3D(props: { slots?: SlotsFn; info?: InfoFn; showForma
           Y: (p) => scene.project(p.x, p.y, 0, w, h)[1],
           pxPerCm: pxPerCm(lips.x, lips.y),
         };
-        overlayRef.current?.(ctx, faceView, m, f, a, { w, h, dt });
+        overlayRef.current?.(ctx, faceView, m, f, a, { w, h, dt, floor: rows() ? h - ROW_BOTTOM : undefined });
         // the hearts start beside the crown on the side the face looks to, and drift that way
         const k = m.tract.scale;
         const [crx, cry] = scene.project(-3 * k, 24.4 * k, 0, w, h);

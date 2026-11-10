@@ -361,7 +361,7 @@ export class HeadScene {
    * Where the camera stands for a named view: its position and what it looks at. The whole head
    * (or the tract alone) fits the camera's frame from there, with `margin` to spare.
    */
-  pose(name: ViewName, withHead: boolean, side: 1 | -1 = 1, margin = 1.1): { position: THREE.Vector3; target: THREE.Vector3 } {
+  pose(name: ViewName, withHead: boolean, side: 1 | -1 = 1, margin = 1.1, vFill = 1): { position: THREE.Vector3; target: THREE.Vector3 } {
     const k = this.model?.bodyParams.scale ?? 1;
     const aspect = this.camera.aspect || 1;
     const half = Math.tan((this.camera.fov * Math.PI) / 360);
@@ -389,7 +389,8 @@ export class HeadScene {
     // (the box's corners stand outside the head's own rounded outline: from an oblique direction
     // a tenth of the fit is air)
     const round = name === "three" || name === "top" ? 0.86 : 0.96;
-    const dist = deep + margin * round * Math.max(hh / half, hw / (half * aspect));
+    // (`vFill`: the share of the view's height the head may fill, when rows of text take the rest)
+    const dist = deep + margin * round * Math.max(hh / (half * vFill), hw / (half * aspect));
     return { target, position: target.clone().addScaledVector(dir, dist) };
   }
 
@@ -413,6 +414,7 @@ export class HeadScene {
     this.sectionMat.dispose();
     this.sectionTex?.dispose();
     this.env.dispose();
+    this.key.shadow.dispose();
     for (const o of [this.centre, this.cutAir, this.cutFrame]) {
       o.geometry.dispose();
       (o.material as THREE.Material).dispose();
