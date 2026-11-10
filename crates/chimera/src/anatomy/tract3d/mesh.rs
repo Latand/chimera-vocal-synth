@@ -238,18 +238,22 @@ fn tooth(m: &mut ElementMesh, p: &Parts, arch: &Arch, upper: bool, side: f64, sp
     m.capped(TOOTH_RINGS, TOOTH_SEGS, ring, tip);
 }
 
-/// The gum of one side of an arch: a band over the row from the lingual side over the necks to
-/// the buccal side, its margin higher between the teeth than at their middles.
-fn gum(m: &mut ElementMesh, p: &Parts, arch: &Arch, upper: bool, side: f64, spans: &[(f64, f64); TEETH_PER_SIDE]) {
+/// The gum of an arch, both sides in one surface: a band over the row from the lingual side over
+/// the necks to the buccal side, its margin higher between the teeth than at their middles.
+/// (One grid per side met the other at the midline with normals of its own: behind the upper
+/// incisors the two halves were lit as a dark rectangle beside a pale one.)
+fn gum(m: &mut ElementMesh, p: &Parts, arch: &Arch, upper: bool, spans: &[(f64, f64); TEETH_PER_SIDE]) {
     const PER: usize = 6;
     let k = p.map.k;
-    let rows = TEETH_PER_SIDE * PER + 1;
+    let half = TEETH_PER_SIDE * PER;
     // across the band: (position across the row, height as crown fractions from the edge, extra cm)
     // (positions across the drawn crown: 0 its lingual face, 1 its buccal face)
     let cols: [(f64, f64, f64); 8] = [(-0.42, 1.0, 0.5), (-0.1, 1.0, 0.12), (0.06, 0.84, 0.0), (0.3, 0.96, 0.0), (0.7, 0.96, 0.0), (0.94, 0.84, 0.0), (1.08, 1.0, 0.14), (1.14, 1.0, 0.7)];
-    m.grid(rows, cols.len(), 0, 0, |r, c| {
+    m.grid(2 * half + 1, cols.len(), 0, 0, |r, c| {
+        // rows run from the left side's last molar through the midline to the right side's
+        let (side, r) = if r < half { (-1., half - r) } else { (1., r - half) };
         let j = (r / PER).min(TEETH_PER_SIDE - 1);
-        let f = if r == rows - 1 { 1. } else { (r % PER) as f64 / PER as f64 };
+        let f = if r == half { 1. } else { (r % PER) as f64 / PER as f64 };
         let u = lerp(spans[j].0, spans[j].1, f).max(0.004);
         let (b, lift, extra) = cols[c];
         // (the lower gum's skirts are short: the chin's skin lies close under the lower incisors'
@@ -259,7 +263,6 @@ fn gum(m: &mut ElementMesh, p: &Parts, arch: &Arch, upper: bool, side: f64, span
         let margin = if c == 2 || c == 5 { -0.13 * sin(PI * f) } else { 0. };
         let (xt, mut lat) = arch_point(arch, u, b * drawn(u));
         if r == 0 {
-            // the two sides' gums meet at the midline
             lat = 0.;
         }
         let h = crown(u);
@@ -559,9 +562,7 @@ pub fn meshes(p: &Parts) -> Vec<ElementMesh> {
         }
         m.material("gum");
         for (a, (arch, upper)) in [(&p.upper, true), (&p.lower, false)].into_iter().enumerate() {
-            for side in [-1., 1.] {
-                gum(m, p, arch, upper, side, &spans[a]);
-            }
+            gum(m, p, arch, upper, &spans[a]);
         }
     }
     // ---- cheeks: the inner surface beside the teeth, from behind the mouth's corners back past

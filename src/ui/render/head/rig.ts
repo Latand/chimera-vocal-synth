@@ -28,6 +28,29 @@ export interface HeadBody {
 }
 
 const BINS = 24;
+/** how many times the jaw's weights are averaged with their neighbours' */
+const JAW_SPREAD = 10;
+
+/** `w` after `passes` rounds of each vertex taking the mean of itself and its neighbours */
+function spread(w: Float32Array, indices: Uint32Array, passes: number): Float32Array {
+  const n = w.length;
+  let cur = w;
+  const count = new Uint16Array(n);
+  for (const i of indices) count[i] += 2;
+  for (let pass = 0; pass < passes; pass++) {
+    const acc = new Float32Array(n);
+    for (let t = 0; t < indices.length; t += 3) {
+      const a = indices[t], b = indices[t + 1], c = indices[t + 2];
+      acc[a] += cur[b] + cur[c];
+      acc[b] += cur[c] + cur[a];
+      acc[c] += cur[a] + cur[b];
+    }
+    const next = new Float32Array(n);
+    for (let i = 0; i < n; i++) next[i] = count[i] ? 0.4 * cur[i] + 0.6 * (acc[i] / count[i]) : cur[i];
+    cur = next;
+  }
+  return cur;
+}
 
 export class HeadRig {
   /** the rest pose in the body's own cm */
@@ -36,7 +59,7 @@ export class HeadRig {
   readonly out: Float32Array;
   /** the mouth's corners at rest: half the distance between them */
   readonly corner: number;
-  private readonly jaw: Float32Array;
+  private jaw: Float32Array;
   private readonly lip: Float32Array;
   private readonly movers: Int32Array;
   /** the vertices inside the lips' line, and each one's share of the upper lip (0 lower … 1 upper) */
@@ -72,8 +95,12 @@ export class HeadRig {
       const throat = Math.min(1, Math.max(0, (yt - 2.2) / 1.8));
       this.jaw[i] = Math.sin((Math.PI / 2) * Math.min(1, mesh.jaw[i] / 0.84)) * throat * throat * (3 - 2 * throat);
       this.lip[i] = Math.min(1, mesh.upper[i] + mesh.lower[i]);
-      if (this.jaw[i] > 0 || this.lip[i] > 0) movers.push(i);
     }
+    // the skin stretches between the jaw and the skull: the weights spread over their
+    // neighbours (the skeleton's fell from all to nothing within two edges along the jaw's
+    // line, and the open jaw drew a seam from the ear to the chin)
+    this.jaw = spread(this.jaw, mesh.indices, JAW_SPREAD);
+    for (let i = 0; i < n; i++) if (this.jaw[i] > 1e-4 || this.lip[i] > 0) movers.push(i);
     this.movers = Int32Array.from(movers);
     let corner = 0, meet = 0;
     for (const i of mesh.lipLine.upper) {

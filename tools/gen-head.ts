@@ -77,23 +77,35 @@ const macro = (sex: string, age: string, w: number): [string, number][] => [
 ];
 /**
  * The sculpt every body shares, from MakeHuman's own detail targets (the same CC0 set): a
- * rounder, less tall skull with fuller temples, cheekbones and a brow that catch the light, a
- * firm line under the jaw, and a slimmer neck. The macro shapes alone gave a tall, narrow
- * cranium over flat cheeks and a neck as wide as the jaw: a mannequin's bust.
+ * rounder skull, shorter behind the ears, with fuller temples; a brow that stands forward;
+ * cheekbones; a chin that stands forward; fuller lips; a firm line under the jaw; a slim neck. The macro shapes alone gave a tall, long cranium with a
+ * small flat face on its front, a receding chin and a neck as wide as the jaw: a mannequin's
+ * bust.
  */
 const SCULPT: [string, number][] = [
   ["head/head-round", 0.2],
-  ["head/head-scale-vert-decr", 0.3],
+  ["head/head-scale-vert-decr", 0.15],
   ["head/head-scale-horiz-incr", 0.25],
+  ["head/head-back-scale-depth-decr", 0.7],
   ["forehead/forehead-temple-incr", 0.6],
-  ["cheek/l-cheek-bones-incr", 0.6],
-  ["cheek/r-cheek-bones-incr", 0.6],
+  ["cheek/l-cheek-bones-incr", 0.9],
+  ["cheek/r-cheek-bones-incr", 0.9],
   ["cheek/l-cheek-volume-decr", 0.5],
   ["cheek/r-cheek-volume-decr", 0.5],
-  ["eyebrows/eyebrows-trans-forward", 0.2],
+  ["eyebrows/eyebrows-trans-forward", 0.22],
+  ["chin/chin-prominent-incr", 0.6],
+  ["chin/chin-bones-incr", 0.3],
+  ["mouth/mouth-upperlip-volume-incr", 0.5],
+  ["mouth/mouth-lowerlip-volume-incr", 0.5],
   ["neck/neck-double-decr", 0.8],
-  ["neck/neck-scale-horiz-decr", 0.4],
+  ["neck/neck-scale-horiz-decr", 0.8],
   ["neck/neck-scale-depth-decr", 0.3],
+  // a face that is doing something: the cheeks a little raised under eyes pressed shut (two of
+  // MakeHuman's expression units, on both sides)
+  ["expression/units/caucasian/eye-left-slit", 0.3],
+  ["expression/units/caucasian/eye-right-slit", 0.3],
+  ["expression/units/caucasian/nose-left-elevation", 0.3],
+  ["expression/units/caucasian/nose-right-elevation", 0.3],
 ];
 /** the three bodies the engine blends between (MakeHuman dm, its axes) */
 const BODIES: Record<string, Float64Array> = {
@@ -282,28 +294,91 @@ function register(mh: Float64Array): Registered {
   }
   const shift = SKIN_FRONT - front;
   for (let j = 0; j < n0; j++) pos[3 * j] += shift * (1 - smooth(NECK_FULL, NECK_NONE, pos[3 * j + 1]));
+  lids(pos);
+  slimNeck(pos);
   return { pos, scale: s, shift };
+}
+
+/**
+ * The closed lids lie over an eyeball: the base mesh's lids close over an empty socket (its
+ * eyeballs are another mesh), flat, and read as a slit cut in the face. Each lid vertex within
+ * LID_REACH of the eye's middle is brought out onto a sphere of an eyeball's radius whose centre
+ * lies behind the closed lids; the skin round it stays, so the lid's upper fold and the socket
+ * show.
+ */
+const EYE_RADIUS = 1.3, EYE_BEHIND = 0.92, LID_FULL = 0.9, LID_REACH = 1.9;
+const eyes = [EYES[0], EYES[1]].map(([name]) => [...target(name).keys()].filter((i) => remap[i] >= 0).map((i) => remap[i]));
+function lids(pos: Float64Array): void {
+  for (const lid of eyes) {
+    const c = [0, 0, 0];
+    for (const j of lid) for (let k = 0; k < 3; k++) c[k] += pos[3 * j + k] / lid.length;
+    const e = [c[0] - EYE_BEHIND, c[1], c[2]];
+    for (let j = 0; j < n0; j++) {
+      const near = Math.hypot(pos[3 * j] - c[0], pos[3 * j + 1] - c[1], pos[3 * j + 2] - c[2]);
+      if (near >= LID_REACH) continue;
+      const d = Math.hypot(pos[3 * j] - e[0], pos[3 * j + 1] - e[1], pos[3 * j + 2] - e[2]);
+      if (d >= EYE_RADIUS || d < 1e-6) continue;
+      const w = 1 - smooth(LID_FULL, LID_REACH, near);
+      for (let k = 0; k < 3; k++) pos[3 * j + k] += w * (e[k] + ((pos[3 * j + k] - e[k]) / d) * EYE_RADIUS - pos[3 * j + k]);
+    }
+  }
+}
+
+/**
+ * Below the jaw the neck is a slim column: no wider than NECK_HALF to either side from
+ * NECK_SLIM down (the base mesh widens towards the shoulders from there, and on a stand that
+ * read as a collar), its own width from NECK_OWN up. Sideways only: front to back the neck
+ * keeps the room the engine's larynx needs.
+ */
+const NECK_HALF = 4.9, NECK_SLIM = 1.5, NECK_OWN = 3.6;
+function slimNeck(pos: Float64Array): void {
+  // the neck's half-width by height, in bins of 2.5 mm
+  const bin = (y: number) => Math.max(0, Math.min(63, Math.floor((y + 8) / 0.25)));
+  const wide = new Float64Array(64);
+  for (let j = 0; j < n0; j++) if (pos[3 * j + 1] < NECK_OWN) wide[bin(pos[3 * j + 1])] = Math.max(wide[bin(pos[3 * j + 1])], Math.abs(pos[3 * j + 2]));
+  // (a bin holds a few vertices, and a factor that changed from bin to bin put ripples in the
+  // neck: the widest of each bin and its three neighbours either way, then the mean over the same)
+  const widest = wide.map((_, b) => Math.max(...wide.slice(Math.max(0, b - 3), b + 4)));
+  const even = widest.map((_, b) => {
+    const part = widest.slice(Math.max(0, b - 3), b + 4);
+    return part.reduce((a, x) => a + x, 0) / part.length;
+  });
+  const width = (y: number) => {
+    const q = Math.max(0, Math.min(62.999, (y + 8) / 0.25 - 0.5));
+    const b = Math.floor(q);
+    return even[b] + (even[b + 1] - even[b]) * (q - b);
+  };
+  for (let j = 0; j < n0; j++) {
+    const y = pos[3 * j + 1];
+    if (y >= NECK_OWN) continue;
+    const w = width(y);
+    const f = w > NECK_HALF ? NECK_HALF / w : 1;
+    pos[3 * j + 2] *= f + (1 - f) * smooth(NECK_SLIM, NECK_OWN, y);
+  }
 }
 
 // ---------------------------------------------------------------- the stand
 /**
- * Rings below the neck's cut: the neck runs on down and out a little (as it does towards the
- * shoulders), then stands on a cut with a bevelled edge: a short upright rim, the bevel, and
- * the flat underside in to its centre. Every ring has the cut loop's vertex count, so the
- * stand's faces are quads but for the underside's fan.
+ * Rings below the neck's cut: the neck runs on down, flares out in a hollow curve into a wide
+ * low disc, and the disc has a bevelled upper edge, an upright rim, a bevelled lower edge and a
+ * flat underside in to its centre. (The first stand ran on at the neck's width to a narrow rim
+ * with a step two thirds of the way down: a pillar with a collar.) Every ring has the cut
+ * loop's vertex count, so the stand's faces are quads but for the underside's fan.
  */
 const STAND = [
   // [drop below the neck's cut (cm), growth of the radius (cm), blend towards an ellipse]
-  [0.7, 0.05, 0.1],
-  [1.5, 0.15, 0.2],
-  [2.3, 0.35, 0.3],
-  [3.0, 0.65, 0.4],
-  [3.5, 0.9, 0.45],
-  [3.62, 0.96, 0.45],
-  [5.0, 0.96, 0.45],
-  [5.12, 0.9, 0.45],
-  [5.4, 0.6, 0.45],
-  [5.4, 0.2, 0.45],
+  [0.5, 0.0, 0.15],
+  [1.1, 0.06, 0.3],
+  [1.7, 0.3, 0.45],
+  [2.2, 0.85, 0.6],
+  [2.6, 1.7, 0.75],
+  [2.9, 2.6, 0.9],
+  [3.05, 3.05, 1.0],
+  [3.25, 3.3, 1.0],
+  [4.85, 3.3, 1.0],
+  [5.02, 3.2, 1.0],
+  [5.15, 2.95, 1.0],
+  [5.15, 1.4, 1.0],
 ] as const;
 const neckKept = neck.map((i) => remap[i]);
 if (neckKept.some((i) => i < 0)) throw new Error("the neck loop left the head");

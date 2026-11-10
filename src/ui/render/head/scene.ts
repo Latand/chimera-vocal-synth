@@ -41,7 +41,7 @@ export type ViewName = "side" | "front" | "three" | "top" | "mouth";
 
 /** the elements' colours by material */
 const MATERIALS: Record<string, { color: number; roughness: number; coat: number }> = {
-  tongue: { color: 0xc4696f, roughness: 0.5, coat: 0.35 },
+  tongue: { color: 0xd98289, roughness: 0.46, coat: 0.4 },
   floor: { color: 0xb8505a, roughness: 0.45, coat: 0.4 },
   palate: { color: 0xe0a39a, roughness: 0.5, coat: 0.3 },
   velum: { color: 0xd47f86, roughness: 0.45, coat: 0.4 },
@@ -59,7 +59,26 @@ const lin = (hex: number): [number, number, number] => {
   const c = new THREE.Color(hex);
   return [c.r, c.g, c.b];
 };
-const SKIN = lin(0xd9b09c), LIP = lin(0xb9776f), BLUSH = lin(0xd29382), SHADE = lin(0x9c6a5c), STAND = lin(0xcfa792);
+const SKIN = lin(0xdab09b), LIP = lin(0xb9625f), BLUSH = lin(0xcf8674), SHADE = lin(0x9c6a5c), MUCOSA = lin(0xb4555c);
+/** what the skin's colour is multiplied by where the blood shows through most: redder, a little darker */
+const FLUSH: [number, number, number] = [1.04, 0.87, 0.84];
+
+/** smooth noise in 0…1 over space (cm), the same on every run: for the skin's uneven tone */
+function mottle(x: number, y: number, z: number): number {
+  const hash = (i: number, j: number, k: number) => {
+    const h = Math.sin(i * 127.1 + j * 311.7 + k * 74.7) * 43758.5453;
+    return h - Math.floor(h);
+  };
+  const ix = Math.floor(x), iy = Math.floor(y), iz = Math.floor(z);
+  const ease = (t: number) => t * t * (3 - 2 * t);
+  const fx = ease(x - ix), fy = ease(y - iy), fz = ease(z - iz);
+  let v = 0;
+  for (let c = 0; c < 8; c++) {
+    const dx = c & 1, dy = (c >> 1) & 1, dz = c >> 2;
+    v += hash(ix + dx, iy + dy, iz + dz) * (dx ? fx : 1 - fx) * (dy ? fy : 1 - fy) * (dz ? fz : 1 - fz);
+  }
+  return v;
+}
 
 interface Part {
   element: string;
@@ -114,8 +133,8 @@ export class HeadScene {
     this.env = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
     pmrem.dispose();
     this.scene.environment = this.env;
-    this.scene.environmentIntensity = 0.42;
-    const key = new THREE.DirectionalLight(0xfff3e8, 2.0);
+    this.scene.environmentIntensity = 0.34;
+    const key = new THREE.DirectionalLight(0xfff3e8, 2.3);
     key.position.set(-22, 24, 30);
     key.castShadow = true;
     key.shadow.mapSize.set(2048, 2048);
@@ -144,7 +163,7 @@ export class HeadScene {
           .replace("#include <project_vertex>", "#include <project_vertex>\nvTractX = ( modelMatrix * vec4( transformed, 1.0 ) ).x;");
         shader.fragmentShader = shader.fragmentShader
           .replace("#include <common>", "#include <common>\nuniform float uLipX;\nuniform float uDeep;\nvarying float vTractX;")
-          .replace("#include <tonemapping_fragment>", "gl_FragColor.rgb *= mix( 1.0, uDeep, smoothstep( 0.4, 5.0, uLipX - vTractX ) );\n#include <tonemapping_fragment>");
+          .replace("#include <tonemapping_fragment>", "gl_FragColor.rgb *= mix( 1.0, uDeep, smoothstep( 1.6, 7.5, uLipX - vTractX ) );\n#include <tonemapping_fragment>");
       };
       this.materials.set(name, mat);
     }
@@ -152,7 +171,7 @@ export class HeadScene {
     // skin: colours per vertex; light that enters the skin comes back out red, so the edge of
     // every shadow is warm (a wrapped, tinted diffuse term) and the surface never looks like plastic
     // (a soft highlight on the brow, the nose and the cheekbones; the lips glossier than the skin)
-    this.skinMat = new THREE.MeshPhysicalMaterial({ vertexColors: true, roughness: 0.47, metalness: 0, sheen: 0.3, sheenRoughness: 0.5, sheenColor: new THREE.Color(0xffc4b0), clearcoat: 0.12, clearcoatRoughness: 0.45, envMapIntensity: 0.95, clipShadows: true, shadowSide: THREE.DoubleSide });
+    this.skinMat = new THREE.MeshPhysicalMaterial({ vertexColors: true, roughness: 0.45, metalness: 0, sheen: 0.35, sheenRoughness: 0.5, sheenColor: new THREE.Color(0xffc4b0), clearcoat: 0.2, clearcoatRoughness: 0.4, envMapIntensity: 1.0, clipShadows: true, shadowSide: THREE.DoubleSide });
     this.skinMat.onBeforeCompile = (shader) => {
       shader.vertexShader = shader.vertexShader
         .replace("#include <common>", "#include <common>\nattribute float lip;\nvarying float vLip;")
@@ -207,7 +226,9 @@ export class HeadScene {
     const n = mesh.n;
     // colours: the lips' vermilion, warmth over the cheeks, the nose, the ears and the chin, a
     // little shade in the eye sockets and in every crease (the nostrils, the ear's bowl, the
-    // lids' line, the corners of the mouth); the stand in one tone
+    // lids' line, the corners of the mouth), and an uneven tone all over (patches a couple of
+    // centimetres across where the blood shows through a little more, finer ones inside
+    // them): skin of one flat colour read as painted plastic. The stand is the same skin.
     const colors = new Float32Array(3 * n);
     const gloss = new Float32Array(n);
     const hollow = hollows(rig.rest, mesh.indices, n, k);
@@ -216,14 +237,23 @@ export class HeadScene {
       const x = rig.rest[3 * i] / k, y = rig.rest[3 * i + 1] / k, z = Math.abs(rig.rest[3 * i + 2]) / k;
       const t = Math.min(1, Math.max(0, (mesh.tint[i] - 0.3) / 0.5));
       const lip = t * t * (3 - 2 * t);
+      const inner = Math.min(1, mesh.inside[i] / 0.4);
       gloss[i] = mesh.stand[i] ? 0 : lip;
-      const blush = Math.min(1, 0.5 * g((y - 11.6) / 1.7, (z - 4.3) / 1.5, (x - 4.5) / 2.6) + 0.4 * g((y - 11.2) / 1.0, z / 1.0, (x - 7.6) / 1.2) + 0.45 * g((y - 13.2) / 2.4, (z - 7.4) / 0.9, (x + 2.2) / 2.0) + 0.2 * g((y - 4.9) / 1.0, z / 1.4, (x - 7.0) / 1.2));
-      const shade = Math.min(0.85, 0.35 * g((y - 15.4) / 0.9, (z - 3.1) / 1.3, (x - 6.2) / 1.6) + hollow[i]);
+      const blush = mesh.stand[i] ? 0 : Math.min(1, 0.62 * g((y - 11.6) / 1.7, (z - 4.3) / 1.5, (x - 4.5) / 2.6) + 0.5 * g((y - 11.2) / 1.0, z / 1.0, (x - 7.6) / 1.2) + 0.5 * g((y - 13.2) / 2.4, (z - 7.4) / 0.9, (x + 2.2) / 2.0) + 0.28 * g((y - 4.9) / 1.0, z / 1.4, (x - 7.0) / 1.2) + 0.22 * g((y - 15.3) / 0.8, (z - 3.1) / 1.4, (x - 6.4) / 1.5));
+      const shade = mesh.stand[i] ? 0 : Math.min(0.85, 0.3 * g((y - 15.4) / 0.9, (z - 3.1) / 1.3, (x - 6.2) / 1.6) + hollow[i]);
+      // (the signed z: the two sides of a face are not mottled alike)
+      const zs = rig.rest[3 * i + 2] / k;
+      const flush = 0.65 * mottle(x / 2.3, y / 2.3, zs / 2.3) + 0.35 * mottle(x / 0.7 + 11, y / 0.7, zs / 0.7);
+      const tone = 0.96 + 0.07 * mottle(x / 4.1 + 5, y / 4.1, zs / 4.1);
       for (let c = 0; c < 3; c++) {
-        let v = SKIN[c] * (1 - blush) + BLUSH[c] * blush;
-        v = v * (1 - lip) + LIP[c] * lip;
+        let v = SKIN[c] * tone * (1 + (FLUSH[c] - 1) * flush * 1.3);
+        v = v * (1 - blush) + BLUSH[c] * blush;
+        v = v * (1 - lip) + LIP[c] * (0.92 + 0.16 * flush) * lip;
+        // behind the lips' line the skin is the lips' and cheeks' inner lining (left in the
+        // lips' colour, the loops rolled in at the mouth's corner showed as a pale sheet)
+        v = v * (1 - inner) + MUCOSA[c] * inner;
         v = v * (1 - shade) + SHADE[c] * v * 1.6 * shade;
-        colors[3 * i + c] = mesh.stand[i] ? STAND[c] : v;
+        colors[3 * i + c] = v;
       }
     }
     this.headGeo.setAttribute("position", new THREE.BufferAttribute(rig.out, 3).setUsage(THREE.DynamicDrawUsage));
@@ -296,8 +326,9 @@ export class HeadScene {
       p.position!.needsUpdate = true;
       p.geo.computeVertexNormals();
       p.geo.computeBoundingSphere();
-      // inside a whole head the lips' and cheeks' inner surfaces lie under the skin's own
-      const covered = withHead && !o.cutaway && (m.element === "lips" || m.element === "cheeks");
+      // inside a whole head the lips' inner surfaces lie under the skin's own (the cheeks' stay:
+      // they are the mouth's side walls behind its corners, where the skin's mouth is open)
+      const covered = withHead && !o.cutaway && m.element === "lips";
       p.group.visible = !o.hidden.includes(m.element) && !covered;
       p.lines.visible = o.lit === m.element;
       (p.lines.material as THREE.LineBasicMaterial).clippingPlanes = planes;
@@ -309,10 +340,10 @@ export class HeadScene {
     const closed = withHead && !o.cutaway && !o.seeThrough;
     for (const m of this.materials.values()) {
       m.clippingPlanes = planes;
-      m.envMapIntensity = closed ? 0.12 : 0.9;
+      m.envMapIntensity = closed ? 0.3 : 0.9;
     }
     this.mouth.uLipX.value = view.display.lips.upper[0].x;
-    this.mouth.uDeep.value = closed ? 0.1 : 1;
+    this.mouth.uDeep.value = closed ? 0.14 : 1;
     // the key's shadow frame: the head (or the tract alone), wherever the camera carries the light
     const reach = (withHead ? 21 : 9) * k;
     this.key.target.position.set((withHead ? -3.5 : 3) * k, (withHead ? 8 : 5.5) * k, 0);
