@@ -1291,30 +1291,34 @@ impl Parts {
             if s.buccal_gap + 0.6 * s.cheek_puff == 0. && at <= self.upper.outer_max() && az > self.lip_w - 0.6 * k {
                 let (x_in, x_front) = (self.upper.x_in(at), self.upper.x_out(at).max(self.upper.x_in(at)));
                 let t = &mut l.tissue[T_CHEEK[1]];
+                // (x, the lower row's biting surface, how much of the gap above it is taken up)
                 let section = |xt: f64| -> (f64, f64, f64) {
                     let (hi, lo) = (self.upper_occlusal(xt, -CUSP), self.lower_occlusal(xt, 0.));
                     let half = 0.5 * (hi.y - lo.y);
                     let reach = (0.45 * k).min(1.4 * half);
                     let inside = ((self.upper.outer_at(xt) * k).min(corner) - az).max(0.);
-                    // (a blunt nose: a pointed one left a thin horn of air above and below it)
+                    // (a blunt nose: a pointed one left a thin horn of air beside it)
                     let bulge = if half > 0. && inside < reach { 1. - pow(inside / reach, 2.5) } else { 0. };
                     // rows under 4 mm apart hold no air: the cheek and the tongue's
                     // margin lie in the gap (it cut as a hair-thin wing on each side)
                     let thin = 1. - smoothstep(0.2 * k, 0.4 * k, half);
-                    let h = if half > 0. { half * lerp(bulge, 1.05, thin) } else { 0. };
-                    (self.map.p(xt, 8.).x, 0.5 * (hi.y + lo.y), h)
+                    let fill = if half > 0. { 2. * half * lerp(bulge, 1.05, thin) } else { 0. };
+                    (self.map.p(xt, 8.).x, lo.y, fill)
                 };
+                // the bulge stands on the lower row (the cheek and the tongue's margin rise from
+                // it), so the air above it thins out in one piece: standing in the middle of
+                // the gap it split the air in two
                 const N: usize = 8;
                 for i in 0..=N {
-                    let (px, mid, h) = section(lerp(x_in, x_front, i as f64 / N as f64));
-                    t.push(v(px, mid + h));
+                    let (px, low, fill) = section(lerp(x_in, x_front, i as f64 / N as f64));
+                    t.push(v(px, low + fill));
                 }
-                let (px, mid, h) = section(x_front);
-                t.push(v(px + 0.2 * k, mid + h));
-                t.push(v(px + 0.2 * k, mid - h));
+                let (px, low, fill) = section(x_front);
+                t.push(v(px + 0.2 * k, low + fill));
+                t.push(v(px + 0.2 * k, low - 0.15 * k));
                 for i in (0..=N).rev() {
-                    let (px, mid, h) = section(lerp(x_in, x_front, i as f64 / N as f64));
-                    t.push(v(px, mid - h));
+                    let (px, low, _) = section(lerp(x_in, x_front, i as f64 / N as f64));
+                    t.push(v(px, low - 0.15 * k));
                 }
             }
         }

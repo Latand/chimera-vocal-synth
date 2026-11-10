@@ -330,15 +330,12 @@ pub fn meshes(p: &Parts) -> Vec<ElementMesh> {
             let q = if r == 0 { p.tongue_at(n - 1, z, lobe) } else if r == nu { p.under[nu - 1] } else { p.compress(p.under[r - 1], lobe) };
             p3(q, z)
         });
-        // the belly, from the root to the blade's start (where the lobe's underside takes over)
+        // the belly, from the root to the blade's start (where the lobe's underside takes over):
+        // the tongue's underside, straight from the root's foot (the valleculae's floor) to the
+        // frenulum and a little fuller along the middle. (A belly that followed the dorsum at
+        // the tongue's thickness made the body a curved slab, hollow underneath.)
         let body = p.lobe_start as f64 / (n - 1) as f64;
-        let fren = p.under[nu - 1];
-        let core = |x: f64, w: f64| -> Vec2 {
-            let (i, f) = along(&p.dorsal, x);
-            let at = |j: usize| add(p.dorsal[j], scale(p.dn[j], -p.dth[j] * (1. + 0.2 * (1. - w * w))));
-            // towards the blade the core runs into the frenulum
-            lerp_v(lerp_v(at(i), at(i + 1), f), fren, smoothstep(0.75 * body, body, x))
-        };
+        let (foot, fren) = (p.root[0], p.under[nu - 1]);
         const BELLY: usize = 11;
         let belly = |x: f64, c: usize| -> [f64; 3] {
             if c == 0 || c == BELLY - 1 {
@@ -346,11 +343,12 @@ pub fn meshes(p: &Parts) -> Vec<ElementMesh> {
                 return p3(top(x, z), z);
             }
             let w = (c as f64 - (BELLY - 1) as f64 / 2.) / ((BELLY - 3) as f64 / 2.);
-            p3(core(x, w), w * width(x) * 0.97)
+            let q = lerp_v(foot, fren, x / body);
+            p3(v(q.x, q.y - 0.35 * k * (1. - w * w) * sin(PI * x / body)), w * width(x) * 0.97)
         };
         m.grid(40, BELLY, 0, 0, |r, c| belly(body * r as f64 / 39., c));
         // the root's end: both loops close on a point inside it
-        let centre = p3(add(p.dorsal[0], scale(p.dn[0], -0.5 * p.dth[0])), 0.);
+        let centre = p3(lerp_v(p.dorsal[0], foot, 0.5), 0.);
         m.grid(2, cols, 0, 0, |r, c| if r == 1 { centre } else { p3(top(0., (c as f64 / (cols - 1) as f64 * 2. - 1.) * width(0.) * 0.999), (c as f64 / (cols - 1) as f64 * 2. - 1.) * width(0.) * 0.999) });
         m.grid(2, BELLY, 0, 0, |r, c| if r == 1 { centre } else { belly(0., c) });
         m.material("floor");
