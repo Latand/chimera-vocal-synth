@@ -84,9 +84,12 @@ export function LabCutView({ drawing, size }: { drawing: CutDrawing | null; size
           wide = Math.max(wide, Math.abs(r.z) + 0.1);
         }
       }
-      if (Number.isFinite(lo) && (Math.max(Math.abs(lo), Math.abs(hi)) * sc > h / 2 - 12 || wide * sc > w / 2 - 12)) {
-        sc = Math.min(sc, (w - 24) / (2 * wide), (h - 30) / Math.max(1e-6, hi - lo));
-        cy = h / 2 + ((lo + hi) / 2) * sc;
+      // (the fitted cut stays clear of the axis label above it and of the scale bar below: a
+      // plane that reached the top edge lay over its own "↑ up" label)
+      const top = 24, bottom = 30;
+      if (Number.isFinite(lo) && (hi * sc > h / 2 - top || -lo * sc > h / 2 - bottom || wide * sc > w / 2 - 12)) {
+        sc = Math.min(sc, (w - 24) / (2 * wide), (h - top - bottom) / Math.max(1e-6, hi - lo));
+        cy = (top + h - bottom) / 2 + ((lo + hi) / 2) * sc;
       }
     }
     // grid: 1 cm from the cut's origin (cuts); a sagittal plane is fitted to the screen instead
