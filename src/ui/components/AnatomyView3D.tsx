@@ -1,14 +1,18 @@
 /**
- * The face screen in 3D: the head, turned with the pointer (drag to turn, wheel or pinch to zoom,
- * right-drag to pan, double-click to go back). The articulators can't be dragged here; the 2D
- * view keeps the handles. three.js draws into its own canvas, which is copied into the screen's
- * 2D canvas each frame so the readouts, the words at the mouth and the glow pass are the 2D
- * view's own.
+ * The face screen in 3D: the head with the engine's 3D vocal tract inside it (render/head/),
+ * moved by the live voice's articulators. Whole, or opened along the midline so the tract shows
+ * ("Cut away"). Drag to turn, wheel or pinch to zoom, right-drag to pan, double-click to go
+ * back. The articulators can't be dragged here; the flat view keeps the handles.
+ *
+ * three.js draws into its own canvas, which goes under the screen's 2D canvas each frame: the
+ * readouts, the words at the mouth and their glow are the flat view's own.
  */
 import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
-import { Anatomy3D } from "../render/anatomy3d.ts";
+import { HeadScene } from "../render/head/scene.ts";
+import { loadHead } from "../render/head/asset.ts";
+import { faceHandles, type FaceView } from "../render/anatomy.ts";
 import { Petting } from "../render/petting.ts";
 import { drawReadouts } from "../render/readouts.ts";
 import { Glow, label } from "../render/vector.ts";
@@ -19,22 +23,32 @@ import { VoiceModel } from "../analysis.ts";
 import { useModel } from "../useModel.ts";
 import { V } from "../colors.ts";
 import { articulatorSlots, tractInfo, type InfoFn, type OverlayFn, type SlotsFn } from "./AnatomyView.tsx";
-import type { ViewFlags } from "../render/anatomy.ts";
-import type { HumanArtic } from "../../wasm/engine.ts";
+import { ARTIC_KEYS, type HumanArtic } from "../../wasm/engine.ts";
 import type { TelemetryMessage } from "../../worklet/protocol.ts";
+
+/** how a fed head is shown */
+/** what the readouts' rows take of a narrow pane, px: the formants and info above, the slots below */
+const ROW_TOP = 58, ROW_BOTTOM = 92;
+
+export interface HeadView {
+  /** the narrowest place's area, written beside it */
+  calipers: boolean;
+  /** opened along the midline (default), or the head whole */
+  cutaway?: boolean;
+}
 
 /**
  * A head driven by something other than the live engine (the duet page's recordings): its own
- * body's model and view flags, and each frame's telemetry. `tele` null holds the head in `artic`
- * with the voice at rest; a new `epoch` (a seek) drops the face's and the airflow's history.
+ * body's model and view, and each frame's telemetry. `tele` null holds the head in `artic`
+ * with the voice at rest; a new `epoch` (a seek) restarts what follows the voice.
  */
 export interface HeadFeed {
   model: VoiceModel;
-  view: ViewFlags;
+  view: HeadView;
   frame(): { tele: TelemetryMessage | null; artic: HumanArtic; epoch: number };
   /** cap on the device pixel ratio (two heads on a phone draw half the pixels at 1.5) */
   maxDpr?: number;
-  /** which way the head turns to show its face (see Anatomy3D.facing) */
+  /** which way the head turns to show its face: 1 to the viewer's right, −1 to their left */
   facing?: 1 | -1;
 }
 
@@ -70,24 +84,31 @@ export function AnatomyView3D(props: { slots?: SlotsFn; info?: InfoFn; showForma
       setFailed(true);
       return;
     }
-    // the palette's sRGB values go straight through, as on the 2D screens
-    gl.outputColorSpace = THREE.LinearSRGBColorSpace;
     gl.setClearColor(0x000000, 1);
-    const r = new Anatomy3D();
-    r.centred = !readoutsRef.current;
-    r.facing = feedRef.current?.facing ?? 1;
+    const scene = new HeadScene(gl);
+    const facing = feedRef.current?.facing ?? 1;
     const glow = new Glow();
-    const camera = r.camera;
+    const camera = scene.camera;
     const controls = new OrbitControls(camera, canvas);
     controls.enableDamping = true;
     controls.dampingFactor = 0.08;
     controls.rotateSpeed = 0.7;
     controls.zoomSpeed = 0.8;
     controls.screenSpacePanning = true;
-    controls.minDistance = 20;
-    controls.maxDistance = 220;
+    controls.minDistance = 12;
+    controls.maxDistance = 260;
+    let live = true;
+    let headReady = false;
+    void loadHead().then(
+      (mesh) => {
+        if (!live) return;
+        scene.setHead(mesh);
+        headReady = true;
+      },
+      () => {},
+    );
 
-    // camera moves (the opening turn from the side view, double-click home): orbit round the target
+    // camera moves (the opening turn from the side, double-click home): orbit round the target
     const tween = { on: false, t: 0, dur: 1, p0: new THREE.Vector3(), q0: new THREE.Vector3(), p1: new THREE.Vector3(), q1: new THREE.Vector3() };
     const s0 = new THREE.Spherical(), s1 = new THREE.Spherical(), off = new THREE.Vector3();
     const moveTo = (pos: THREE.Vector3, target: THREE.Vector3, dur: number) => {
@@ -113,15 +134,26 @@ export function AnatomyView3D(props: { slots?: SlotsFn; info?: InfoFn; showForma
       if (tween.t >= 1) tween.on = false;
     };
     controls.addEventListener("start", () => (tween.on = false));
-    let posed: VoiceModel | null = null;
-    /** the head centre the camera was placed for (a new body moves the view with it) */
-    const posedTarget = new THREE.Vector3();
-    const home = () => {
-      const m = feedRef.current?.model ?? model.current;
-      if (m) {
-        const p = r.poses(m);
-        moveTo(p.home, p.target, 0.9);
+    let cutaway = true;
+    /** the view the head is shown from: opened, mostly from the cut's side; whole, from the front and side */
+    const homePose = () => {
+      // with the readouts the head is drawn smaller, to leave their corner free (its stand ran
+      // under the first readout's digits)
+      // on a narrow screen the readouts are a row above the head and a row below it: the head
+      // fits between them (its stand lay under the lower row)
+      const p = scene.pose(cutaway ? "side" : "three", true, facing, readoutsRef.current && w >= 560 ? 1.4 : 1.08, rows() ? Math.max(0.4, (h - ROW_TOP - ROW_BOTTOM) / h) : 1);
+      if (cutaway) {
+        // a little towards the face, so the cut face keeps its depth
+        const d = p.position.clone().sub(p.target);
+        d.applyAxisAngle(new THREE.Vector3(0, 1, 0), 0.38 * facing);
+        d.y += d.length() * 0.08;
+        p.position.copy(p.target).add(d);
       }
+      return p;
+    };
+    const home = () => {
+      const p = homePose();
+      moveTo(p.position, p.target, 0.9);
     };
     canvas.addEventListener("dblclick", home);
 
@@ -145,6 +177,8 @@ export function AnatomyView3D(props: { slots?: SlotsFn; info?: InfoFn; showForma
     canvas.addEventListener("pointerleave", offHead);
 
     let w = 0, h = 0, dpr = 1;
+    /** a narrow screen with readouts: their rows take the top and the bottom of the pane */
+    const rows = () => !!readoutsRef.current && w > 0 && w < 560;
     const maxDpr = () => Math.min(feedRef.current?.maxDpr ?? 2, window.devicePixelRatio || 1);
     /** a fed head (no settings of its own to keep) goes back to its framing when its pane changes shape */
     let refit = false;
@@ -158,18 +192,31 @@ export function AnatomyView3D(props: { slots?: SlotsFn; info?: InfoFn; showForma
       canvas.height = Math.max(1, Math.round(h * dpr));
       gl.setPixelRatio(dpr);
       gl.setSize(Math.max(1, w), Math.max(1, h), false);
-      r.resize(Math.max(1, w), Math.max(1, h));
+      camera.aspect = Math.max(1, w) / Math.max(1, h);
+      // on a wide screen the head sits left of centre, leaving the right for the readouts
+      if (!readoutsRef.current) camera.clearViewOffset();
+      else if (w < 560) camera.setViewOffset(w, h, 0, (ROW_BOTTOM - ROW_TOP) / 2, w, h);
+      else camera.setViewOffset(w, h, 0.17 * w, 0.03 * h, w, h);
+      camera.updateProjectionMatrix();
     };
     const ro = new ResizeObserver(fit);
     ro.observe(wrap);
+    const pxPerCm = (x: number, y: number) => {
+      const e = camera.matrixWorld.elements;
+      const [x0, y0] = scene.project(x, y, 0, w, h);
+      const [x1, y1] = scene.project(x + e[0], y + e[1], e[2], w, h);
+      return Math.hypot(x1 - x0, y1 - y0);
+    };
     let raf = 0;
     let last = performance.now();
     let fTick = 0;
     let formants: number[] = [];
-    let epoch = -1;
+    let posed: VoiceModel | null = null;
+    const posedTarget = new THREE.Vector3();
+    /** what the scene last drew: the posture and how it was shown */
+    let drawn = "";
     const loop = (now: number) => {
       const dt = Math.min(0.05, (now - last) / 1000);
-      // the face's expression keeps real time (a held note lasts as long at a low frame rate)
       const elapsed = Math.min(0.5, (now - last) / 1000);
       last = now;
       if (maxDpr() !== dpr) fit();
@@ -178,28 +225,31 @@ export function AnatomyView3D(props: { slots?: SlotsFn; info?: InfoFn; showForma
       let tele: TelemetryMessage | null, a: HumanArtic;
       if (feed) {
         const fr = feed.frame();
-        if (fr.epoch !== epoch) {
-          epoch = fr.epoch;
-          r.resetMotion();
-        }
         tele = fr.tele;
         a = tele ? VoiceModel.articFromArray(tele.t.artic) : fr.artic;
       } else {
         tele = engine.latest && sameBody(engine.latest.body, st.body) ? engine.latest : null;
         a = tele ? VoiceModel.articFromArray(tele.t.artic) : st.artic;
       }
-      const view = feed ? feed.view : st.view;
-      r.face.content = pet.content;
-      r.face.update(tele, elapsed);
+      const view: HeadView = feed ? feed.view : st.view;
       const m = feed ? feed.model : model.current;
       if (m && w > 0 && h > 0) {
+        const cut = view.cutaway ?? true;
+        if (cut !== cutaway) {
+          cutaway = cut;
+          if (posed) home();
+        }
         if (posed !== m) {
-          const p = r.poses(m);
+          // the camera's poses depend on the body the scene holds: draw it first
+          scene.update(m, a, {}, { head: true, cutaway, seeThrough: false, hidden: [], lit: null, explode: false, side: facing });
+          drawn = "";
+          const p = homePose();
           if (!posed) {
-            // open on the 2D view's side view, then turn to show the face
-            camera.position.copy(p.side);
-            controls.target.copy(p.target);
-            moveTo(p.home, p.target, 1.6);
+            // open on the flat view's side view, then turn to show the head
+            const side = scene.pose("side", true, facing);
+            camera.position.copy(side.position);
+            controls.target.copy(side.target);
+            moveTo(p.position, p.target, 1.6);
           } else {
             // another body: keep the view, centred on the new head
             off.copy(p.target).sub(posedTarget);
@@ -209,50 +259,74 @@ export function AnatomyView3D(props: { slots?: SlotsFn; info?: InfoFn; showForma
           posedTarget.copy(p.target);
           posed = m;
         } else if (refit) {
-          const p = r.poses(m);
-          moveTo(p.home, p.target, 0.4);
+          const p = homePose();
+          moveTo(p.position, p.target, 0.4);
         }
         refit = false;
         stepTween(dt);
         controls.update(dt);
+        // the engine's shapes are recomputed only when the posture or the way it is shown changes
+        const key = `${headReady}|${cutaway}|${ARTIC_KEYS.map((k) => a[k].toFixed(4)).join(",")}`;
+        if (key !== drawn) {
+          scene.update(m, a, {}, { head: true, cutaway, seeThrough: false, hidden: [], lit: null, explode: false, side: facing });
+          drawn = key;
+        }
+        gl.render(scene.scene, camera);
         const f = m.frame(a);
         const readouts = readoutsRef.current;
         if (readouts && (++fTick % 4 === 0 || formants.length === 0)) formants = m.transfer(a).formants;
-        r.update(m, f, a, tele, view, dt);
-        gl.render(r.scene, camera);
+        // the overlays first, glowing; the head goes under them
         ctx.setTransform(1, 0, 0, 1, 0, 0);
         ctx.globalCompositeOperation = "source-over";
-        ctx.fillStyle = "#000";
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
-        ctx.drawImage(glCanvas, 0, 0, canvas.width, canvas.height);
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
         ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-        if (r.caliper) {
-          const [cx, cy] = r.project(r.caliper.x, r.caliper.y, r.caliper.z);
-          label(ctx, r.caliper.area <= 0.0005 ? "CLOSED" : `${r.caliper.area.toFixed(2)} CM²`, cx + 10, cy - 6, { size: 11, color: V.white, ls: 0.12 });
+        if (view.calipers && cutaway) {
+          // the narrowest place of the tract (past the larynx), with its area
+          let best = -1;
+          for (let i = 0; i < f.grid.length; i++) if (f.grid[i].s > 2.5 && (best < 0 || f.grid[i].area < f.grid[best].area)) best = i;
+          if (best >= 0) {
+            const g = f.grid[best];
+            const [cx, cy] = scene.project(g.mid.x, g.mid.y, 0, w, h);
+            label(ctx, g.area <= 0.0005 ? "CLOSED" : `${g.area.toFixed(2)} CM²`, cx + 10, cy - 6, { size: 11, color: V.white, ls: 0.12 });
+          }
         }
         if (readouts) {
           const info = infoRef.current(m, f, tele).map((s) => s.toUpperCase());
           const slots = slotsRef.current(m, a, f, formants, tele);
-          drawReadouts(ctx, { w, h, compact: r.compact, slotX: w - Math.min(340, w * 0.42), slotY: h - Math.min(236, h * 0.3) }, formantsRef.current ? formants : [], info, slots);
+          drawReadouts(ctx, { w, h, compact: w < 560, slotX: w - Math.min(340, w * 0.42), slotY: h - Math.min(236, h * 0.3) }, formantsRef.current ? formants : [], info, slots);
         }
-        overlayRef.current?.(ctx, r.faceView(m, f, a), m, f, a, { w, h, dt });
+        const lips = faceHandles(m, f, a).find((x) => x.id === "lips")!.pos;
+        const faceView: FaceView = {
+          handles: faceHandles,
+          X: (p) => scene.project(p.x, p.y, 0, w, h)[0],
+          Y: (p) => scene.project(p.x, p.y, 0, w, h)[1],
+          pxPerCm: pxPerCm(lips.x, lips.y),
+        };
+        overlayRef.current?.(ctx, faceView, m, f, a, { w, h, dt, floor: rows() ? h - ROW_BOTTOM : undefined });
         // the hearts start beside the crown on the side the face looks to, and drift that way
-        crown = r.crown(m);
-        pet.update(elapsed, [crown.x + r.facing * 7 * crown.cmPx, crown.y + 0.5 * crown.cmPx], crown.cmPx);
-        pet.draw(ctx, r.facing, crown.cmPx);
+        const k = m.tract.scale;
+        const [crx, cry] = scene.project(-3 * k, 24.4 * k, 0, w, h);
+        crown = { x: crx, y: cry, cmPx: pxPerCm(-3 * k, 24.4 * k) };
+        pet.update(elapsed, [crown.x + facing * 7 * crown.cmPx, crown.y + 0.5 * crown.cmPx], crown.cmPx);
+        pet.draw(ctx, facing, crown.cmPx);
         glow.apply(canvas, ctx, dpr);
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        ctx.globalCompositeOperation = "destination-over";
+        ctx.drawImage(glCanvas, 0, 0, canvas.width, canvas.height);
+        ctx.globalCompositeOperation = "source-over";
       }
       raf = requestAnimationFrame(loop);
     };
     raf = requestAnimationFrame(loop);
     return () => {
+      live = false;
       cancelAnimationFrame(raf);
       ro.disconnect();
       canvas.removeEventListener("dblclick", home);
       canvas.removeEventListener("pointermove", onHover);
       canvas.removeEventListener("pointerleave", offHead);
       controls.dispose();
-      r.dispose();
+      scene.dispose();
       gl.dispose();
       // browsers allow few live WebGL contexts: give this one back now, not at garbage collection
       gl.forceContextLoss();
@@ -267,7 +341,7 @@ export function AnatomyView3D(props: { slots?: SlotsFn; info?: InfoFn; showForma
     );
   return (
     <div ref={wrapRef} className="anatomy three">
-      <canvas ref={canvasRef} aria-label="Vocal tract in 3D. Drag to turn the head, scroll or pinch to zoom, double-click to go back to the starting view." role="img" />
+      <canvas ref={canvasRef} aria-label="The head and its vocal tract in 3D. Drag to turn the head, scroll or pinch to zoom, double-click to go back to the starting view." role="img" />
     </div>
   );
 }

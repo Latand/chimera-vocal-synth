@@ -6,10 +6,10 @@ import { engine } from "../audio/AudioEngine.ts";
 
 export function mount(root: HTMLElement): void {
   // console/debug handle (used by the browser smoke test)
-  (window as unknown as { __chimeraEngine: typeof engine }).__chimeraEngine = engine;
-  if (new URLSearchParams(window.location.search).get("mode") === "speak") {
-    useStore.getState().setMode("speak");
-  }
+  (window as unknown as { __chimeraEngine: typeof engine }).__chimeraEngine =
+    engine;
+  const mode = new URLSearchParams(window.location.search).get("mode");
+  if (mode === "speak" || mode === "lab") useStore.getState().setMode(mode);
   root.replaceChildren();
   createRoot(root).render(
     <StrictMode>

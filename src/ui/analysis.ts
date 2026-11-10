@@ -3,7 +3,7 @@
  * engine): geometry frames for drawing, the transfer function and formants for display, and
  * vowel-space interpolation for the vowel map. Never runs inside the audio thread.
  */
-import { airwayModel, dropAirwayModel, airwayFrame, airwayAreas, airwayTransfer, TractMap, NEUTRAL, ARTIC_KEYS, VOWELS, VOWEL_TARGETS, type AirwayModel, type HumanArtic, type HumanBody, type HumanFrame } from "../wasm/engine.ts";
+import { tract3d, tract3dView, type Tract3dView, type Tract3dShape, type Tract3dFrame, type Tract3dWant, airwayModel, dropAirwayModel, airwayFrame, airwayAreas, airwayTransfer, TractMap, NEUTRAL, ARTIC_KEYS, VOWELS, VOWEL_TARGETS, type AirwayModel, type HumanArtic, type HumanBody, type HumanFrame } from "../wasm/engine.ts";
 import { bodyWeights, type BodyMix } from "./body.ts";
 
 export interface VowelPoint {
@@ -57,6 +57,15 @@ export class VoiceModel {
       }
       return { ipa: v.ipa, example: v.example, F1: at((t) => t.formants[0])!, F2: at((t) => t.formants[1])!, artic };
     });
+  }
+
+  /** the 3D view of a posture: element meshes, the lips' line, the midsagittal section */
+  view(a: HumanArtic, shape: Tract3dShape = {}, topology = false): Tract3dView {
+    return tract3dView(this.model, a, shape, topology);
+  }
+  /** the lab's 3D geometry for a posture (see `tract3d` in the engine facade) */
+  geometry(a: HumanArtic, shape: Tract3dShape, want: Tract3dWant = {}): Tract3dFrame {
+    return tract3d(this.model, a, shape, want);
   }
 
   /** Free the engine's model; this VoiceModel must not be used afterwards. */

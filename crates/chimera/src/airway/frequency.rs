@@ -22,6 +22,29 @@ pub struct TransferResult {
 /// volume velocity. Branches in `cut` are removed (e.g. the glottis: an ideal flow source has
 /// infinite internal impedance, which decouples the subglottal system).
 pub fn transfer_function(el: &LinearElements, inject: usize, freqs: &[f64], cut: &[usize]) -> TransferResult {
+    solve(el, inject, freqs, cut).0
+}
+
+/// |U_radiator / U_in| per radiator (in `rad_nodes` order) per frequency: how much of the output
+/// leaves by each opening (the lips, the nostrils).
+pub fn radiator_transfer(el: &LinearElements, inject: usize, freqs: &[f64], cut: &[usize]) -> Vec<Vec<f64>> {
+    solve(el, inject, freqs, cut).2
+}
+
+/// Impedance (re, im) at node `inject` per frequency: the pressure there for a unit volume
+/// velocity injected (radiation loads included; remove `rad_nodes` to measure through a sealed
+/// opening, as an impedance head on the lips does).
+pub fn input_impedance(el: &LinearElements, inject: usize, freqs: &[f64], cut: &[usize]) -> Vec<(f64, f64)> {
+    solve(el, inject, freqs, cut).1
+}
+
+/// Branch impedance at angular frequency w: R + j(ωL − E/ω).
+#[inline]
+fn branch_z(el: &LinearElements, j: usize, w: f64) -> (f64, f64) {
+    (el.r[j], w * el.l[j] - el.e[j] / w)
+}
+
+fn solve(el: &LinearElements, inject: usize, freqs: &[f64], cut: &[usize]) -> (TransferResult, Vec<(f64, f64)>, Vec<Vec<f64>>) {
     let n = el.n_nodes;
     // adjacency of open branches
     let mut adj_start = vec![0usize; n + 1];
@@ -52,6 +75,9 @@ pub fn transfer_function(el: &LinearElements, inject: usize, freqs: &[f64], cut:
     let mut order: Vec<usize> = Vec::with_capacity(n);
     let mut parent = vec![UNVISITED; n];
     let mut parent_branch = vec![usize::MAX; n];
+    // a second open branch between a node and its parent (a membrane beside a port) is combined
+    // in parallel with the tree branch; any other loop is ignored
+    let mut par_branch = vec![usize::MAX; n];
     parent[inject] = -1;
     order.push(inject);
     let mut q = 0;
@@ -61,7 +87,10 @@ pub fn transfer_function(el: &LinearElements, inject: usize, freqs: &[f64], cut:
             let j = adj[e];
             let k = if el.a[j] == m { el.b[j] } else { el.a[j] };
             if parent[k] != UNVISITED {
-                continue; // visited (a loop would be ignored here)
+                if parent[k] == m as isize && parent_branch[k] != j && par_branch[k] == usize::MAX {
+                    par_branch[k] = j;
+                }
+                continue; // visited (any other loop is ignored here)
             }
             parent[k] = m as isize;
             parent_branch[k] = j;
@@ -75,6 +104,8 @@ pub fn transfer_function(el: &LinearElements, inject: usize, freqs: &[f64], cut:
     }
 
     let nf = freqs.len();
+    let mut z_in = vec![(0.0, 0.0); nf];
+    let mut per_rad = vec![vec![0.0; nf]; el.rad_nodes.len()];
     let mut mag = vec![0.0; nf];
     let mut pdb = vec![0.0; nf];
     let mut yr = vec![0.0; n]; // total admittance of subtree (incl. node shunt)
@@ -92,7 +123,7 @@ pub fn transfer_function(el: &LinearElements, inject: usize, freqs: &[f64], cut:
         let w = 2.0 * PI * js_max(freqs[f], 1e-3);
         // shunt admittances
         for &k in &order {
-            let mut gr = 0.0;
+            let mut gr = el.g[k];
             let mut gi = w * el.c[k];
             w_yr[k] = 0.0;
             w_yi[k] = 0.0;
@@ -126,10 +157,8 @@ pub fn transfer_function(el: &LinearElements, inject: usize, freqs: &[f64], cut:
         // eliminate leaves → root
         for q in (1..order.len()).rev() {
             let k = order[q];
-            let j = parent_branch[k];
-            // Y_eq = Y / (1 + Z·Y), Z = R + jωL
-            let zr = el.r[j];
-            let zi = w * el.l[j];
+            // Y_eq = Y / (1 + Z·Y), Z = R + jωL (∥ a parallel membrane)
+            let (zr, zi) = edge_z(el, parent_branch[k], par_branch[k], w);
             let dr = 1.0 + zr * yr[k] - zi * yi[k];
             let di = zr * yi[k] + zi * yr[k];
             let dd = dr * dr + di * di;
@@ -144,6 +173,7 @@ pub fn transfer_function(el: &LinearElements, inject: usize, freqs: &[f64], cut:
             let dd = yr[inject] * yr[inject] + yi[inject] * yi[inject];
             pr[inject] = yr[inject] / dd;
             pi[inject] = -yi[inject] / dd;
+            z_in[f] = (pr[inject], pi[inject]);
         }
         // back-substitute root → leaves: I = p_m·Y_eq(k); p_k = p_m − Z·I
         let mut ur = 0.0;
@@ -151,17 +181,17 @@ pub fn transfer_function(el: &LinearElements, inject: usize, freqs: &[f64], cut:
         for (q, &k) in order.iter().enumerate() {
             if q > 0 {
                 let m = parent[k] as usize;
-                let j = parent_branch[k];
                 let ir = pr[m] * er[k] - pi[m] * ei[k];
                 let ii = pr[m] * ei[k] + pi[m] * er[k];
-                let zr = el.r[j];
-                let zi = w * el.l[j];
+                let (zr, zi) = edge_z(el, parent_branch[k], par_branch[k], w);
                 pr[k] = pr[m] - (zr * ir - zi * ii);
                 pi[k] = pi[m] - (zr * ii + zi * ir);
             }
-            if rad_of[k].is_some() {
-                ur += pr[k] * rad_yr[k] - pi[k] * rad_yi[k];
-                ui += pr[k] * rad_yi[k] + pi[k] * rad_yr[k];
+            if let Some(r) = rad_of[k] {
+                let (qr, qi) = (pr[k] * rad_yr[k] - pi[k] * rad_yi[k], pr[k] * rad_yi[k] + pi[k] * rad_yr[k]);
+                ur += qr;
+                ui += qi;
+                per_rad[r][f] = hypot(qr, qi);
             }
             if el.wall_rad[k] > 0.0 && el.wall_area[k] > 0.0 {
                 ur += el.wall_rad[k] * (pr[k] * w_yr[k] - pi[k] * w_yi[k]);
@@ -171,7 +201,22 @@ pub fn transfer_function(el: &LinearElements, inject: usize, freqs: &[f64], cut:
         mag[f] = hypot(ur, ui);
         pdb[f] = 20.0 * log10(mag[f] * w + 1e-30);
     }
-    TransferResult { freqs: freqs.to_vec(), mag, pressure_db: pdb }
+    (TransferResult { freqs: freqs.to_vec(), mag, pressure_db: pdb }, z_in, per_rad)
+}
+
+/// Impedance of the tree edge to a node: its branch, in parallel with a second branch if any.
+#[inline]
+fn edge_z(el: &LinearElements, j: usize, j2: usize, w: f64) -> (f64, f64) {
+    let (ar, ai) = branch_z(el, j, w);
+    if j2 == usize::MAX {
+        return (ar, ai);
+    }
+    let (br, bi) = branch_z(el, j2, w);
+    // Z₁Z₂/(Z₁+Z₂)
+    let (nr, ni) = (ar * br - ai * bi, ar * bi + ai * br);
+    let (dr, di) = (ar + br, ai + bi);
+    let dd = dr * dr + di * di;
+    ((nr * dr + ni * di) / dd, (ni * dr - nr * di) / dd)
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]

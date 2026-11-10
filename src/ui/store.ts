@@ -10,7 +10,7 @@ import { singNoteOn, singNoteOff, stopSinging, ensureDictionary } from "./singin
 import { stopSpeaking } from "./speech.ts";
 import { connectMidi, disconnectMidi, type MidiStatus } from "./midi.ts";
 
-export type Mode = "play" | "speak" | "sing" | "bestiary" | "beatbox";
+export type Mode = "play" | "speak" | "sing" | "bestiary" | "beatbox" | "lab";
 
 export interface BeatState {
   steps: (BeatStep | null)[];
@@ -28,9 +28,38 @@ export interface ViewOptions {
   calipers: boolean;
   /** the face screen shows the head in 3D (turn it with the pointer; no handles) */
   threeD: boolean;
+  /** the 3D head is opened along the midline, so the tract inside shows */
+  cutaway: boolean;
 }
 
+/** Lab mode: what the 3D tract shows. The 3D offsets do not reach the voice yet. */
+export interface LabState {
+  /** 3D parameters as offsets from what the articulators imply */
+  shape: Record<string, number>;
+  /** the perpendicular cut's place along the centreline, 0 (glottis) … 1 (lips) */
+  cut: number;
+  plane: "perpendicular" | "sagittal" | "coronal" | "axial";
+  /** each plane's position, template cm: lateral z, front-back x, height y */
+  at: { sagittal: number; coronal: number; axial: number };
+  /** elements hidden in the 3D view */
+  hidden: string[];
+  /** the element whose controls are shown and whose lines are lit */
+  element: string;
+  /** hide the near half: the head shows its layers on the cut face */
+  cutaway: boolean;
+  /** draw the selected element's grid over its surface */
+  lines: boolean;
+  explode: boolean;
+  /** the head round the tract */
+  head: boolean;
+  /** the head's skin translucent, to see the tract inside the closed head */
+  seeThrough: boolean;
+  /** the model follows the live voice's articulators */
+  follow: boolean;
+}
 interface State {
+  lab: LabState;
+  setLab: (patch: Partial<LabState>) => void;
   started: boolean;
   starting: boolean;
   startError: string | null;
@@ -118,6 +147,8 @@ let session = 0;
 const FIRST_BEAT = BEAT_PRESETS[0];
 
 export const useStore = create<State>((set, get) => ({
+  lab: { shape: {}, cut: 0.82, plane: "perpendicular", at: { sagittal: 0, coronal: 4.5, axial: 8.3 }, hidden: [], element: "tongue", cutaway: true, lines: false, explode: false, head: true, seeThrough: false, follow: false },
+  setLab: (patch) => set((s) => ({ lab: { ...s.lab, ...patch } })),
   started: false,
   starting: false,
   startError: null,
@@ -131,7 +162,7 @@ export const useStore = create<State>((set, get) => ({
   volume: 0.8,
   hold: false,
   heldNotes: [],
-  view: { pressure: true, particles: true, grid: false, calipers: true, threeD: false },
+  view: { pressure: true, particles: true, grid: false, calipers: true, threeD: true, cutaway: true },
   mode: "play",
   setMode: (m) => {
     const prev = get().mode;
@@ -140,7 +171,7 @@ export const useStore = create<State>((set, get) => ({
     // notes held across the switch would keep breathing into the other voice
     set({ mode: m, heldNotes: [] });
     // speech belongs to Speak: under a creature the human clock stops and it would resume later
-    if (prev === "speak" || m === "bestiary") stopSpeaking();
+    if (prev === "speak" || prev === "lab" || m === "bestiary") stopSpeaking();
     if ((prev === "bestiary") !== (m === "bestiary")) {
       // a sustain belongs to the voice it was started on
       set({ hold: false });
@@ -154,6 +185,7 @@ export const useStore = create<State>((set, get) => ({
     if (prev === "sing") stopSinging();
     // speech and song breathe by themselves: a held breath would drone under them
     if (m === "speak" || m === "sing") set({ hold: false });
+    if (prev === "lab") set({ hold: false });
     if (m === "sing") ensureDictionary();
     if (m === "beatbox") {
       // a beatboxer waits with the jaw nearly closed; the sounds bring their own breath

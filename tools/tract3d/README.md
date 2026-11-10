@@ -1,0 +1,92 @@
+# tract3d tools: the 3D model against MRI
+
+The geometry is the engine's (`crates/chimera/src/anatomy/tract3d/`). The CLI reads the MRI
+references from a local folder outside the repository (`$TRACT3D_DATA`, see
+[reference-data.md](../../docs/tract3d/reference-data.md)) and writes everything to an output
+folder you name, also outside the repository. `cargo test` needs no data.
+
+```sh
+cargo build --release -p chimera-cli
+CLI=target/release/chimera
+OUT=/somewhere/outside/the/repo
+
+# the model alone: a drawing of laminae, cuts, planes and the area function; JSON of a posture
+"$CLI" tract3d sheet s "$OUT/s.svg"
+"$CLI" tract3d model retroflex "$OUT/retroflex.json"
+"$CLI" tract3d cut l 14.0 "$OUT/l-cut.svg"        # one cut, large, coloured by tissue
+"$CLI" tract3d presets "$OUT/presets"             # every preset's drawing + the feature checks
+"$CLI" tract3d tune s                             # move a preset until its feature checks pass
+"$CLI" tract3d benchmark                          # compute and mesh time
+
+# against the Dresden Vocal Tract Dataset (DVTD, CC0 meshes)
+"$CLI" tract3d reference "$TRACT3D_DATA/dvtd/extracted/subject-1/s1-22-ehe-schwa" "$OUT/ref"
+"$CLI" tract3d validate "$TRACT3D_DATA/dvtd" "$OUT/dvtd" --iterations 3000 --anatomy-iterations 600 --jobs 3
+"$CLI" tract3d fit-derive "$OUT/dvtd"             # fits derive()'s constants; prints them
+bun tools/tract3d/capture.ts "$OUT/dvtd"          # SVG figures → PNG
+
+# against the USC 75-speaker set (CC BY 4.0 volumes; unsegmented)
+bun tools/tract3d/usc-compare.ts "$CLI" "$TRACT3D_DATA/usc75/recon" "$OUT/usc"
+bun tools/tract3d/capture.ts "$OUT/usc"
+
+# the engine's 1D acoustics against the transfer functions DVTD measured on 3D prints of the
+# same tracts (reads validate's NN-name-reference.json for the MRI area functions)
+"$CLI" tract3d acoustics "$TRACT3D_DATA/dvtd" "$OUT/dvtd" "$OUT/acoustics"
+# the voice's airway with rigid walls, the walls it had before, and the tissue walls and soft
+# palate it has now: bandwidths, nasal share, tissue resonances (no data needed)
+"$CLI" tract3d walls "$OUT/walls"
+bun tools/tract3d/capture.ts "$OUT/acoustics"; bun tools/tract3d/capture.ts "$OUT/walls"
+
+# the docs' table again from a finished validate run (errors only: nothing of the reference's own)
+"$CLI" tract3d table "$OUT/dvtd"
+
+# numbered frames of the 3D head and tract: the head whole from three sides, the open mouth,
+# the head cut open, the planes, every mode's face screen, the lab at desktop and phone width;
+# then the mouth wide open, /a/ and /u/ from the front, and the coronal plane in the CUT screen
+bun tools/tract3d/lab-capture.ts http://127.0.0.1:5318/ "$OUT/frames"
+
+# the head's skin mesh again from a MakeHuman checkout kept outside the repository (CC0 assets;
+# docs/tract3d/head-asset.md); --debug writes each body's midline over the tract
+bun tools/gen-head.ts /path/to/makehuman --debug "$OUT/head" --tract "$OUT/schwa.json"
+
+# the lab's geometry call in the browser (against `bun run preview`)
+bun tools/tract3d/browser-bench.ts http://127.0.0.1:4173/ "$OUT/browser.json"
+```
+
+## What `validate` does
+
+1. **Reference pipeline**, the same code for MRI and model: voxels at 0.5 mm, the two openings of
+   the open mesh (glottis lower), a centreline through the lumen weighted towards its middle and
+   pinned to the midsagittal plane, cuts every 2.5 mm perpendicular to it (0.25 mm pixels), and the
+   air regions entering a band ±6 mm across and ±30 mm sideways. Where the research stage's probe
+   output is kept (`dvtd/derived/`), each sound reports the port's difference from it.
+2. **Anatomy, once per speaker** (male body for speaker 1, female for speaker 2): the pharyngeal
+   ring's half-widths and outline, the arches, the palate's vault, the laryngeal tube's size, the
+   epiglottis' curl, the aryepiglottic folds' height, the piriform fossae and the tongue's width
+   are fitted to /ə aː iː uː s l/ together, with those sounds' articulation refitted around them
+   twice.
+3. **Every sound**: the *default* posture (the engine's own targets for the nearest symbol, the
+   3D shape from `derive`) and a *fitted* posture (13 articulators, 11 tongue parameters, the
+   lips' rounding and the pharynx's squeeze, Nelder–Mead with two restarts). The objective is the area-function distance d
+   plus the tract length, the cut proportions, a penalty for openings under 1.5 mm, and the
+   distance of F1–F3 from the reference's through the same 1D solver. A fit whose voxels have no
+   connected path is backed off towards its starting posture until they have one. Both are then
+   measured by the reference pipeline on the model's own voxels.
+4. **The fast slicer's own check** (T-consistency): the model's voxels cut along the fast
+   slicer's centreline, cut by cut.
+5. **Per sound**: d (default, fitted), the default's area against the reference's over four
+   stretches of the tract, length and volume, F1–F3 of both area functions through the
+   engine's chain-matrix code, the constriction, the lower pharynx's channel counts, cut shape
+   (IoU after equal-area scaling, aspect), the nearest reference (identification), and the
+   distance between the two speakers for the same sound. Per speaker: the medians, the cut
+   shape against the between-speaker values, and the lower pharynx's count within one.
+
+Outputs: `table.json`, `table.md`, `anatomy-*.json`, and per sound `NN-name.svg` (MRI cuts above
+model cuts at the same scale, the area functions, both midsagittal planes, and the lower tract
+cut by cut every 5 mm),
+`-reference.json`, `-fit.json`, `-fit-voxel.json`, `-posture.json`. These contain values derived
+from the datasets: they stay outside git. `table.md` alone is written for the repository: it
+holds this project's error measurements only (distances, resonance errors, and the constriction
+as a difference from the reference's), and goes into
+[validation-results.md](../../docs/tract3d/validation-results.md).
+
+An exit status of zero means the run finished; acceptance is in the numbers.

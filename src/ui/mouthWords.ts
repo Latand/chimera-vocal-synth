@@ -44,7 +44,7 @@ export function mouthWords(now: () => MouthWord | null, color: string, side: 1 |
   const t: Trail = { entries: [] };
   const trail = t.entries;
   let clock = 0;
-  return (ctx, r, m, f, a, { w, h, dt }) => {
+  return (ctx, r, m, f, a, { w, h, dt, floor }) => {
     clock += dt;
     advanceTrail(t, now(), clock);
     if (!trail.length) return;
@@ -58,7 +58,8 @@ export function mouthWords(now: () => MouthWord | null, color: string, side: 1 |
     const below = ahead < 60;
     const room = below ? w - 16 : ahead;
     const base = Math.max(26, Math.min(64, r.pxPerCm * 1.7));
-    const by = Math.min(h - 14, ly + r.pxPerCm * 18);
+    // (above a row of readouts when the screen has one there: the word was written over it)
+    const by = Math.min((floor ?? h) - 14, ly + r.pxPerCm * 18);
     for (const { word: wd, left } of trail) {
       const age = left === null ? 0 : clock - left;
       const u = Math.min(1, age / FADE);

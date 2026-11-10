@@ -7,7 +7,7 @@
 use crate::airway::network::{AirwayNetwork, Area, NoiseSpec, PortSpec, Tube, TubeSpec};
 use crate::anatomy::human::{HumanArtic, HumanBody, HumanFrame, HumanVocalTract};
 use crate::math::{js_max, js_min, js_round, smoothstep as smooth, sqrt};
-use crate::physics::{C_SOUND, RHO, WALL_NASAL, WALL_SOFT, WALL_TRACHEA};
+use crate::physics::{C_SOUND, RHO, TISSUE_CHEEK, TISSUE_LARYNX, TISSUE_LIP, TISSUE_PHARYNX, TISSUE_TONGUE, TISSUE_VELUM, UVULA_MASS, WALL_NASAL, WALL_SOFT, WALL_TRACHEA, WallParams};
 
 #[derive(Clone, Copy, Debug)]
 pub struct NoiseGains {
@@ -31,6 +31,8 @@ pub struct HumanAirway {
     pub velum_port: usize,
     pub rad_lips: usize,
     pub rad_nose: usize,
+    /// the soft palate with the uvula, between the top of the pharynx and the nasopharynx
+    pub velum_membrane: usize,
     pub n_ph: usize,
     pub n_or: usize,
     pub ph_areas: Vec<f64>,
@@ -115,6 +117,10 @@ impl HumanAirway {
         net.add_port(nasal.node(js_round(n_na as f64 * 0.45) as usize), sinus, PortSpec::new(0.12 * k * k, 0.5 * k).kinetic(0.0, 0.0).no_half_sections());
         let rad_lips = net.add_radiation(oral.last_node());
         let rad_nose = net.add_radiation(nasal.last_node());
+        let velum_membrane = net.add_membrane(pharynx.last_node(), nasal.first_node(), VELUM_AREA * k * k, velum_tissue(k));
+        // the human tract's own losses and inertances (creatures keep the plain network)
+        net.discontinuity = true;
+        net.thermal = true;
         net.finalize();
         HumanAirway {
             net,
@@ -130,6 +136,7 @@ impl HumanAirway {
             velum_port,
             rad_lips,
             rad_nose,
+            velum_membrane,
             n_ph,
             n_or,
             ph_areas: vec![0.0; n_ph],
@@ -257,9 +264,25 @@ impl HumanAirway {
         self.net.set_tube_targets(self.pharynx, &self.ph_areas, Some(ph_len), Some(&self.ph_min));
         self.net.set_tube_targets(self.oral, &self.or_areas, Some(or_len), Some(&self.or_min));
         self.net.set_port_target(self.velum_port, f.velum_port);
+        self.update_walls(&f);
         self.update_noise(&f);
         self.frame = Some(f);
         self.frame.as_ref().unwrap()
+    }
+
+    /// The wall tissue of every pharyngeal and oral section (`tissue_at`), at control rate.
+    fn update_walls(&mut self, f: &HumanFrame) {
+        let epi_len = 2.4 * self.body.scale * self.body.pharynx;
+        for i in 0..self.n_ph {
+            let s = (i as f64 + 0.5) * self.ph_len / self.n_ph as f64;
+            let (w, soft) = tissue_at(f, s, epi_len);
+            self.net.set_node_wall(self.pharynx.node(i), w, soft);
+        }
+        for i in 0..self.n_or {
+            let s = self.ph_len + (i as f64 + 0.5) * self.or_len / self.n_or as f64;
+            let (w, soft) = tissue_at(f, s, epi_len);
+            self.net.set_node_wall(self.oral.node(i), w, soft);
+        }
     }
 
     /// Register turbulence sources: glottis, narrowest supraglottal constriction, teeth obstacle.
@@ -322,5 +345,54 @@ impl HumanAirway {
         }
         self.net.set_noise_sources(&list);
         self.noise_list = list;
+    }
+}
+
+/// Moving area of the soft palate's oral face (cm², template): ≈2.8 cm long (`HumanVocalTract`'s
+/// velum) by ≈2.6 cm wide at its root narrowing to the uvula, less its fixed rim.
+pub const VELUM_AREA: f64 = 5.0;
+
+/// The soft palate's tissue per unit area with the uvula's mass spread over it (body scale k:
+/// area ∝ k², the uvula's mass ∝ k³). The stiffness keeps its own resonance where it was.
+pub fn velum_tissue(k: f64) -> WallParams {
+    let area = VELUM_AREA * k * k;
+    let mass = TISSUE_VELUM.mass + UVULA_MASS * k * k * k / area;
+    WallParams { mass, resistance: TISSUE_VELUM.resistance, stiffness: TISSUE_VELUM.stiffness * mass / TISSUE_VELUM.mass }
+}
+
+/// The wall of the section at `s` cm from the glottis: its tissue (the parts mixed by their share
+/// of the perimeter) and the fraction of the perimeter that yields. Bone and teeth do not: the
+/// hard palate, the dental arches beside the oral cavity and the incisors. The soft palate's oral face moves as the velum's `Membrane`, so it counts as
+/// fixed here. Shares (the midsagittal frame cannot say more): pharynx 35 % tongue root, 65 %
+/// constrictor wall; oral cavity 30 % roof, 40 % tongue, 30 % sides of which half teeth, half
+/// cheek; behind the incisors the tongue's tip and floor; past them the lips.
+pub fn tissue_at(f: &HumanFrame, s: f64, epi_len: f64) -> (WallParams, f64) {
+    if s < epi_len || f.grid.is_empty() {
+        return (TISSUE_LARYNX, 1.0);
+    }
+    let g = &f.grid;
+    let i = g.partition_point(|q| q.s < s).min(g.len() - 1);
+    let q = if i > 0 && (s - g[i - 1].s) < (g[i].s - s) { &g[i - 1] } else { &g[i] };
+    let mix = |parts: &[(WallParams, f64)]| -> (WallParams, f64) {
+        let total: f64 = parts.iter().map(|p| p.1).sum();
+        let mut w = WallParams { mass: 0.0, resistance: 0.0, stiffness: 0.0 };
+        for (t, x) in parts {
+            w.mass += t.mass * x / total;
+            w.resistance += t.resistance * x / total;
+            w.stiffness += t.stiffness * x / total;
+        }
+        (w, total)
+    };
+    match q.region {
+        0 | 1 => mix(&[(TISSUE_TONGUE, 0.35), (TISSUE_PHARYNX, 0.65)]),
+        // the roof is the hard palate or the soft palate's membrane: neither yields as a wall
+        2 => mix(&[(TISSUE_TONGUE, 0.4), (TISSUE_CHEEK, 0.15)]),
+        _ => {
+            if s < f.teeth_s {
+                mix(&[(TISSUE_TONGUE, 0.3)])
+            } else {
+                mix(&[(TISSUE_LIP, 0.8)])
+            }
+        }
     }
 }

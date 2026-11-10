@@ -52,8 +52,15 @@ branching (nasal tract, sinuses, piriform fossae, two bronchi, vocal sacs, OEC).
   loss a·|U|U with a = ρk/2·(1/As − 1/Al)² chosen by flow direction; solved as an
   exact quadratic per sample (avoids the period-2 instability of lagged |U|).
 * Continuity: (V/ρc²) dp/dt = ΣU_in − ΣU_out − U_wall − dV/dt (moving walls).
-* Walls: per-node mass–spring–damper (m≈1.5 g/cm², r≈1600, k≈3e5 CGS, ×perimeter·Δ).
+* Walls: per-node mass–spring–damper per unit area, ×perimeter·Δ (creatures: m≈1.5 g/cm²,
+  r≈1600, k≈3e5 CGS). The human tract sets them per section at control rate from the tissue
+  there (`voice::human_airway::tissue_at`, `physics::TISSUE_*`): tongue, pharyngeal
+  constrictors, laryngeal walls, cheeks and lips yield, the hard palate and the teeth do not.
   Wall flow also radiates weakly (voice bar during voiced closures).
+* Membranes: a mass–spring–damper sheet between two nodes, driven by their pressure
+  difference (the human soft palate with the uvula, between the pharynx and the nasopharynx).
+* Human tract only: the evanescent-mode inertance of abrupt area changes between sections
+  (`discontinuity_inertance`) and the walls' thermal boundary-layer loss.
 * Radiation: Flanagan parallel R–L load at lips/nostrils/beak; output = d/dt of radiated
   volume velocity (sum of mouth, nostrils, skin).
 * Turbulence: per branch Reynolds number Re = |U|·d_h/(A·ν); dipole pressure source

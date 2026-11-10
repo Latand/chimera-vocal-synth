@@ -12,6 +12,8 @@ export interface ChimeraExports {
   chimera_call: Fn;
   chimera_result_ptr: Fn;
   chimera_result_len: Fn;
+  chimera_floats_ptr: Fn;
+  chimera_floats_len: Fn;
   [name: string]: Fn | WebAssembly.Memory;
 }
 
@@ -69,4 +71,10 @@ export function call<T>(fn: string, args: Record<string, unknown> = {}): T {
   const v = JSON.parse(out);
   if (status !== 0) throw new Error(`engine ${fn}: ${v.error}`);
   return v as T;
+}
+
+/** A copy of the float buffer the last `tract3dView` call left (vertex positions, x y z). */
+export function floats(): Float32Array {
+  const e = x();
+  return new Float32Array(e.memory.buffer, e.chimera_floats_ptr(), e.chimera_floats_len()).slice();
 }
