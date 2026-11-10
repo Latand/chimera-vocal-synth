@@ -100,9 +100,9 @@ Pass lines:
 - Constriction: channel count equal at the minimum-area cut for /l/ (2), /s/, /ʃ/, /ç/ (1);
   location within 1 cm along s.
 - Lower pharynx: where a reference cut 0.5–3 cm above the glottis splits into separate regions
-  (epilarynx plus fossae: 3 regions at 0.75–1.75 cm in most of the female speaker's sounds, 2 at
-  1.25–2.75 cm in most of the male's; not in every sound, e.g. the male /l/), the model's matching
-  cut has the same count ±1.
+  (epilarynx plus fossae: three regions in most of the female speaker's sounds, two in most of
+  the male's; not in every sound, e.g. the male /l/), the model's matching cut has the same
+  count ±1.
 - Resonances of fitted vs reference area function (same 1D solver): median |ΔF1–F3| ≤ 5 %, every
   value ≤ 10 %. *Why:* about three times the F2 discrimination threshold [R23], and inside the
   ~8 % repeat variation of 3D MRI [R19].
@@ -125,10 +125,11 @@ anatomy from T-fit. German vowels map to the engine's nearest symbols (/iː/→i
 
 Presets (design §4.1), checked by geometry:
 - *grooved* /s/: single channel ≤ 0.2 cm² within 0.85–0.95 of the length, lower outline concave
-  (groove index > 0, §6 M4); DVTD /s/: 0.15 / 0.12 cm² at 0.90 / 0.93.
-- *domed* /ʃ/: minimum ≤ 0.15 cm² further back than /s/ (DVTD: 0.79 / 0.88 of the length), with a
-  long thin channel behind it.
-- *lateral* /l/: two channels at the tip contact, 2–2.8 cm apart (DVTD), their area ratio
+  (groove index > 0, §6 M4). The line encloses both speakers' /s/.
+- *domed* /ʃ/: minimum ≤ 0.15 cm² further back than /s/ (as in both speakers), with a long thin
+  channel behind it.
+- *lateral* /l/: two channels at the tip contact, 2–2.8 cm apart (a line that encloses both
+  speakers' /l/), their area ratio
   following `sideAsym`.
 - *retroflex* /ɹ/: midsagittal air under the tip (sublingual), palatal constriction.
 - *bunched* /ɹ/: two constrictions (palatal and pharyngeal) and a large front cavity [R2].

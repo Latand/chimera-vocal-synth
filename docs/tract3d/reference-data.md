@@ -146,5 +146,7 @@ project's measurements, used to set thresholds in [validation-plan.md](validatio
 - 1D resonances of the cut area functions against the measured transfer-function peaks of the
   3D prints: median +6.7 % F1, +6.5 % F2, +8.6 % F3 (n = 44; 3 F2 and 5 F3 values were
   peak-pairing misses above 25 %).
-- Constrictions: /s/ 0.15 cm² (male), 0.12 cm² (female); /ʃ/ 0.10 cm² both; /i/ 0.32 / 0.20 cm²;
-  /l/: two lateral channels at the alveolar contact in both speakers.
+- Constrictions: /s/ and /ʃ/ narrow to one small channel and /i/ to a wide flat slit in both
+  speakers; /l/ shows two lateral channels at the alveolar contact in both. Their sizes and
+  places are in the local evidence, outside git: the repository holds this project's pass lines
+  and errors, and published values with their citations.

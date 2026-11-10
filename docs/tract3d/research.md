@@ -51,16 +51,16 @@ geometry today: one midsagittal distance stands for every shape.
   tracts confirm the 4–5 kHz trough [R13]; area-function work found they lower formants
   significantly [R6]; 3D FDTD on MRI geometry found their effect the largest of the side cavities
   [R10].
-  *Observed:* in the DVTD meshes, cuts perpendicular to the centreline 0.75–1.75 cm above the
-  glottis split into **three** air regions (the epilarynx tube in the middle and one fossa on each
-  side) for the female speaker in /s/, /ʃ/, /i/, /a/, /u/, /l/; the male speaker shows two regions
-  at 1.25–2.75 cm (`dvtd_slices.py`, evidence 05).
+  *Observed:* in the DVTD meshes, cuts perpendicular to the centreline just above the glottis
+  split into **three** air regions (the epilarynx tube in the middle and one fossa on each side)
+  for the female speaker in /s/, /ʃ/, /i/, /a/, /u/, /l/; the male speaker's cuts show two regions
+  (`dvtd_slices.py`, evidence 05; where and how large is in the local evidence, outside git).
 - **Valleculae.** Pockets between the tongue root and the epiglottis. 3D FDTD found their spectral
   dips small and vowel-dependent [R10]; a 3D model study reports resonances and antiresonances in
   the 3–5 kHz region from both valleculae and piriform sinuses (record summary only, *unverified*
   in full text) [R14].
-  *Observed:* in the male /ʃ/ the cut at 5.2 cm shows the epiglottis as a crescent of tissue
-  inside the oropharynx, with air on both sides of it (evidence 06).
+  *Observed:* in the male /ʃ/ a cut through the oropharynx shows the epiglottis as a crescent of
+  tissue inside it, with air on both sides (evidence 06).
 - **Epilarynx / laryngeal cavity.** The cavity above the folds acts as a quarter-wave resonator
   that generates one formant of the whole tract (the fourth, for one male speaker's Japanese
   vowels) [R11]. Its narrowing relative to the pharynx was the classic explanation of the singer's
@@ -69,8 +69,8 @@ geometry today: one midsagittal distance stands for every shape.
   1991 MRI study fitted area-versus-width relations per region exactly because of that [R5]. The
   pharynx is the region where speakers differ most for fricatives [R9 summary, *unverified* in
   full text].
-  *Observed:* the oropharynx cut of male /a/ at 4.8 cm is an ellipse about 1 cm² with a midline
-  constriction; male /i/ widens the oropharynx to 9–12 cm² (tongue root forward) (evidence 01–03).
+  *Observed:* the oropharynx cut of the male /a/ is a small ellipse with a midline constriction;
+  in the male /i/ the oropharynx is many times wider (tongue root forward) (evidence 01–03).
 
 ### 2.2 Velum
 
@@ -102,8 +102,8 @@ source).
 ### 2.5 Cheeks and the buccal space
 
 No primary source on buccal-space acoustics was read (*unverified*). *Observed:* the male DVTD
-segmentations are large (volume 52–123 cm³, against 22–64 cm³ for the female speaker,
-`dvtd_slices.py`), and the paper says the segmentation extends slightly in front of the mouth
+segmentations are about twice the volume of the female speaker's (`dvtd_slices.py`), and the
+paper says the segmentation extends slightly in front of the mouth
 [R4]; how much of the difference is buccal space (between teeth and cheeks) was not separated.
 The model treats the cheeks as the lateral bound of the oral cavity with an adjustable vestibule
 gap, and the validation reports volume separately so this shows up.
@@ -127,17 +127,17 @@ lip corners; `dvtd_slices.py`). No lip-shape measurement study was read (*unveri
   (domed) for postalveolars, with a concave posterior body for all fricatives (*unverified*
   attribution; the 1994 conference version, read as an abstract, says the concave /s z/ tongue
   makes the area function more abrupt behind the constriction) [R8, R9].
-  *Observed (DVTD):* /s/ narrows to a single small channel, 0.15 cm² (male, 0.75 × 0.28 cm) and
-  0.12 cm² (female, 0.90 × 0.15 cm) at 90–93 % of the tract length; /ʃ/ narrows to 0.10 cm² at
-  79–88 %, behind a long thin channel arched under the palate dome (evidence 04–06). The groove
+  *Observed (DVTD):* /s/ narrows to a single small channel, several times wider than it is high,
+  near the front end of the tract in both speakers; /ʃ/ narrows further back, behind a long thin
+  channel arched under the palate dome (evidence 04–06). The groove
   must therefore produce a narrow channel *and* control its width/height ratio.
 - **Laterals.** MRI of /l/ (light and dark) in four English speakers: alveolar contact with inward
   lateral compression of the tongue and convex cross-sections of the posterior body; flow
   channels along the sides, of somewhat different areas, talker-dependent; dark /l/ has a smaller
   pharynx (root retraction, back raising) [R1].
-  *Observed (DVTD /l/):* both speakers show **two lateral channels** about 2–2.8 cm apart across
-  the contact: male 0.69 and 0.51 cm², female 0.41 and 0.16 cm² (`plane_peek.py`, evidence 07–08).
-  The asymmetry the paper reports is visible in both.
+  *Observed (DVTD /l/):* both speakers show **two lateral channels** across the contact, of
+  unequal areas (`plane_peek.py`, evidence 07–08): the asymmetry the paper reports is visible in
+  both.
 - **Rhotics.** MRI of English /ɹ/ in four speakers: three cavities from two constrictions (oral and
   pharyngeal), a large volume in front of the oral constriction, a convex anterior and concave
   posterior tongue body [R2]. Retroflex and bunched /ɹ/ give similar F1–F3 but different F4/F5
@@ -147,8 +147,8 @@ lip corners; `dvtd_slices.py`). No lip-shape measurement study was read (*unveri
   with the tip low (evidence 09). The split into "retroflex" and "bunched" here is a visual
   judgement on 1.56 mm images; nothing was measured to classify them.
 - **Vowels.** Mostly bilateral contact (sides braced against the upper molars) for front vowels
-  [R7]. *Observed:* the DVTD /i/ constriction is a wide flat slit (male 1.45 × 0.25 cm,
-  0.32 cm²), i.e. a midline-only area law cannot know its width.
+  [R7]. *Observed:* the DVTD /i/ constriction is a wide flat slit, several times wider than it
+  is high, i.e. a midline-only area law cannot know its width.
 - **Precedent for parameters.** A published 3D geometric vocal tract model controls the tongue
   with tongue-body, tip, blade and root positions plus four *tongue side elevation* parameters
   (TS1–TS4, −1.4…1.4 cm) at equally spaced points along the tongue contour, interpolated between
