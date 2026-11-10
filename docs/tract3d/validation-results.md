@@ -129,6 +129,9 @@ geometry that answers it is model-design.md §0.3. The same command on both:
   turn forward later and meet the tongue more steeply), as a seventh run: male cut IoU 0.61
   and aspect error 0.55, female 0.67 and 0.41, lower pharynx 43/47 and 82/93. No gain beyond
   the search's own spread, and the male's cuts lost; the exponent's range stays 2 to 4.
+  And, as an eighth run, walls that touch where they come within 2 mm of the tongue or the
+  epiglottis off the midline (blunt ends in place of the tips): cut IoU 0.64 and 0.66, aspect
+  error 0.45 and 0.48, fitted d 0.467 and 0.400. Inside the spread as well; not adopted.
 - **The female fit** gained most (median d 0.447 → 0.376, five sounds under 0.30, three more
   identified): her pharynx is narrow for its depth and her three lower channels lie where the
   model's now are.
