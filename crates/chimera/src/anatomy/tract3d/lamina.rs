@@ -19,7 +19,8 @@ pub const T_LOWER_TEETH: usize = 5;
 pub const T_PHARYNX: [usize; 2] = [6, 7];
 pub const T_FAUCES: usize = 8;
 pub const T_CHEEK: [usize; 2] = [9, 10];
-pub const N_TISSUE: usize = 11;
+pub const T_ARY_FOLD: usize = 11;
+pub const N_TISSUE: usize = 12;
 
 #[derive(Clone, Debug)]
 pub struct Lamina {
@@ -78,16 +79,6 @@ pub fn area(poly: &[Vec2]) -> f64 {
         s += a.x * b.y - b.x * a.y;
     }
     0.5 * s
-}
-pub fn ellipse(out: &mut Vec<Vec2>, center: Vec2, rx: f64, ry: f64) {
-    out.clear();
-    if rx <= 0. || ry <= 0. {
-        return;
-    }
-    for i in 0..48 {
-        let t = i as f64 * 2. * PI / 48.;
-        out.push(v(center.x + rx * cos(t), center.y + ry * sin(t)));
-    }
 }
 /// Superellipse profile: 1 at w = 0, 0 at |w| ≥ 1, `(1 − |w|^p)^(1/p)` between.
 #[inline]

@@ -244,7 +244,7 @@ fn the_presets_make_the_tongue_shapes_the_research_lists() {
 /// Review finding: the fossae and the pharyngeal wall were drawn from formulas of their own,
 /// which had drifted from the ones the laminae cut (a pocket drawn 3 mm lower than it was sliced).
 /// The drawn surfaces now come from the same `Parts` helpers; this holds them there over
-/// anatomy and posture changes.
+/// anatomy and posture changes, and holds the laminae's own polygons on the same helpers.
 #[test]
 fn drawn_side_cavities_and_walls_are_the_sliced_geometry() {
     let mut m = Tract3d::new(BODY_MALE);
@@ -252,7 +252,7 @@ fn drawn_side_cavities_and_walls_are_the_sliced_geometry() {
     let shapes = [
         ShapeParams::default(),
         ShapeParams { piriform_depth: 2.4, piriform_width: 0.9, epilarynx_width: 0.8, ..ShapeParams::default() },
-        ShapeParams { pharynx_width_oro: 2.2, pharynx_shape: 3.5, lateral_squeeze: 0.4, vallecula_depth: 1.1, ..ShapeParams::default() },
+        ShapeParams { pharynx_width_oro: 2.6, pharynx_shape: 3.5, lateral_squeeze: 0.4, vallecula_depth: 1.1, epiglottis_curl: 0.6, ..ShapeParams::default() },
     ];
     for p in presets(BodyMix::MALE).iter().filter(|p| ["a", "i", "u", "ə"].contains(&p.name.as_str())) {
         for shape in &shapes {
@@ -261,28 +261,37 @@ fn drawn_side_cavities_and_walls_are_the_sliced_geometry() {
             let larynx = &m.meshes()[4];
             // the larynx mesh: the tube (25 × 25), then per side a fossa (11 × 17) and a vallecula (9 × 13)
             let at = |i: usize| (larynx.positions[3 * i] as f64, larynx.positions[3 * i + 1] as f64, larynx.positions[3 * i + 2] as f64);
+            for r in 0..25 {
+                let (c, a, b) = pa.tube[r];
+                for col in 0..25 {
+                    let (x, _, z) = at(r * 25 + col);
+                    let e = ((x - c) / a).powi(2) + (z / b).powi(2);
+                    assert!((e - 1.).abs() < 1e-4, "{}: tube vertex off its section ({e})", p.name);
+                }
+            }
             let mut i = 25 * 25;
             for side in [-1., 1.] {
-                let (centre, rx, ry) = pa.piriform_ellipse();
-                let (cz, rz) = pa.piriform(side);
                 for _ in 0..11 * 17 {
                     let (x, y, z) = at(i);
-                    let e = ((x - centre.x) / rx).powi(2) + ((y - centre.y) / ry).powi(2) + ((z - cz) / rz).powi(2);
-                    assert!((e - 1.).abs() < 1e-4, "{}: fossa vertex off the sliced ellipsoid ({e})", p.name);
                     // it opens into the hypopharynx's floor and is not drawn above it
                     assert!(y <= pa.bottom + 1e-4, "{}: fossa drawn {} cm above the floor", p.name, y - pa.bottom);
+                    // (single precision at the apex, where the section's radii vanish)
+                    if let Some((cx, cz, rx, rz)) = pa.piriform_section(side, y).filter(|s| s.3 > 0.05) {
+                        let e = ((x - cx) / rx).powi(2) + ((z - cz) / rz).powi(2);
+                        assert!((e - 1.).abs() < 2e-3, "{}: fossa vertex off the sliced pouch ({e})", p.name);
+                    }
                     i += 1;
                 }
-                let (centre, rx, ry) = pa.vallecula_ellipse();
-                let (cz, rz) = pa.vallecula(side);
-                for _ in 0..9 * 13 {
+                for j in 0..9 * 13 {
                     let (x, y, z) = at(i);
-                    let e = ((x - centre.x) / rx).powi(2) + ((y - centre.y) / ry).powi(2) + ((z - cz) / rz).powi(2);
-                    assert!((e - 1.).abs() < 1e-4, "{}: vallecula vertex off the sliced ellipsoid ({e})", p.name);
+                    let top = pa.epiglottis_tip(z).y;
+                    let (floor, top) = pa.vallecula_span(z).unwrap_or((top, top));
+                    let want = if j % 13 == 0 { pa.epiglottis_front_x(floor, z) } else { pa.root_x(y, z).max(pa.epiglottis_front_x(y.min(top), z)) };
+                    assert!(y >= floor - 1e-4 && (x - want).abs() < 1e-3, "{}: vallecula vertex {} cm off the sliced pocket", p.name, x - want);
                     i += 1;
                 }
             }
-            // the pharyngeal wall's mesh lies on the laminae's own wall, at any lateral offset
+            // the pharyngeal wall's mesh lies on the laminae's own ring, at any lateral offset
             let wall = &m.meshes()[3];
             for j in 0..wall.positions.len() / 3 {
                 let (x, y, z) = (wall.positions[3 * j] as f64, wall.positions[3 * j + 1] as f64, wall.positions[3 * j + 2] as f64);
@@ -293,8 +302,67 @@ fn drawn_side_cavities_and_walls_are_the_sliced_geometry() {
                 let q = pa.wall_point(y, z);
                 assert!((q.x - x).abs() < 1e-4, "{}: wall drawn {} cm off the sliced wall", p.name, x - q.x);
             }
+            // the laminae themselves: a fossa's polygon lies on `piriform_section`, the ring's
+            // polygon on `wall_point`, at a lamina off the midline
+            let k = m.lamina_count() / 2 + 13;
+            let z = m.lamina_z(k);
+            let (air, tissue) = m.lamina_polygons(k);
+            for q in &air[chimera::anatomy::tract3d::AIR_PIRIFORM[1]] {
+                if let Some((cx, cz, rx, rz)) = pa.piriform_section(1., q.y).filter(|s| s.3 > 0.05) {
+                    let e = ((q.x - cx) / rx).powi(2) + ((z - cz) / rz).powi(2);
+                    assert!((e - 1.).abs() < 1e-6, "{}: the lamina's fossa off the pouch ({e})", p.name);
+                }
+            }
+            let ring = &tissue[6];
+            assert!(ring.len() > 10, "{}: no ring polygon at z = {z}", p.name);
+            for q in &ring[1..ring.len() - 1] {
+                assert!((pa.wall_point(q.y, z).x - q.x).abs() < 1e-9, "{}: the lamina's ring off wall_point", p.name);
+            }
         }
     }
+}
+
+/// Slice-critic finding: the pharynx was 3.0 cm wide in every posture, its cuts had vertical
+/// side walls, and the epiglottis never crossed the lumen. The ring of walls now closes on what
+/// stands in front of it, so the lumen's width follows its depth; the leaf stands free above the
+/// valleculae; the fossae are pouches beside the tube, of the published size.
+#[test]
+fn the_pharynx_widens_with_its_depth_and_the_epiglottis_stands_in_the_lumen() {
+    let all = presets(BodyMix::MALE);
+    let mut m = Tract3d::new(BODY_MALE);
+    let mut f = Tract3dFrame::default();
+    // width of the main region of the cut nearest a share of the tract's length
+    let mut width = |name: &str, share: f64| {
+        let p = all.iter().find(|p| p.name == name).unwrap();
+        m.compute(&p.artic, &p.shape, &mut f).unwrap();
+        let c = &f.cuts()[((f.area_fn.s.len() - 1) as f64 * share).round() as usize];
+        (c.width, c.height, c.area)
+    };
+    let (a, i) = (width("a", 0.4), width("i", 0.4));
+    assert!(i.0 > a.0 + 0.25, "/i/ {:.2} cm wide at 0.4 of the tract, /a/ {:.2}", i.0, a.0);
+    assert!(i.2 > 2. * a.2, "/i/ {:.2} cm², /a/ {:.2} cm² at 0.4 of the tract", i.2, a.2);
+    // a horizontal plane through the leaf's free part: tissue between two stretches of air on a
+    // lamina beside the median fold (the vallecula in front, the pharynx behind)
+    let p = all.iter().find(|p| p.name == "i").unwrap();
+    m.compute(&p.artic, &p.shape, &mut f).unwrap();
+    let pa = &m.parts;
+    let z = 0.5 * BODY_MALE.scale;
+    let (floor, top) = pa.vallecula_span(z).expect("a vallecula beside the median fold");
+    assert!(top - floor > 0.5 * BODY_MALE.scale, "vallecula {:.2} cm deep", top - floor);
+    let over_fold = pa.vallecula_span(0.).map_or(0., |(f, t)| t - f);
+    assert!(over_fold < 0.6 * (top - floor), "the median fold stands in the valleculae: {over_fold:.2} cm deep over it");
+    let y = 0.5 * (floor + top);
+    let mut row = chimera::anatomy::tract3d::Row::default();
+    m.air_intervals(y, z, &mut row);
+    let leaf = pa.epiglottis_front_x(y, z);
+    let front = row.intervals[..row.count].iter().any(|q| q.lo >= leaf - 1e-6 && q.hi > leaf + 0.1);
+    let behind = row.intervals[..row.count].iter().any(|q| q.hi <= leaf - 0.2 && q.hi - q.lo > 0.3);
+    assert!(front && behind, "air on both sides of the leaf at y = {y:.2}: {:?}", &row.intervals[..row.count]);
+    // the cut's side walls are not vertical: its rows shorten steadily towards its edges
+    let c = &f.cuts()[((f.area_fn.s.len() - 1) as f64 * 0.2).round() as usize];
+    let main: Vec<f64> = c.rows.iter().filter(|r| r.z >= 0. && r.count > 0).map(|r| r.intervals[..r.count].iter().map(|q| q.hi - q.lo).sum()).collect();
+    let (mid, edge) = (main[0], main[main.len() - 1]);
+    assert!(edge < 0.35 * mid, "the cut at 0.2 of the tract ends {edge:.2} cm thick against {mid:.2} cm on the midline");
 }
 
 /// The posture alone (`pose`) gives the meshes `compute` gives, and what the head's skin follows:
@@ -367,20 +435,31 @@ fn bunched_r_is_an_open_approximant() {
 }
 
 /// Review finding: the lips' opening could not get narrower than 1.1 cm, so rounded vowels were
-/// fitted with a wide, thin slit. `lipRound` draws the corners in.
+/// fitted with a wide, thin slit. `lipRound` draws the corners in. Slice-critic finding: only the
+/// MRI fits set it, so /u/ was drawn with spread lips; `derive` now sets it from the engine's
+/// own lip articulators (protruded and drawn together), for every preset and live gesture.
 #[test]
 fn lip_rounding_narrows_the_opening() {
     let all = presets(BodyMix::MALE);
-    let u = all.iter().find(|p| p.name == "u").unwrap();
+    let get = |name: &str| all.iter().find(|p| p.name == name).unwrap();
     let mut m = Tract3d::new(BODY_MALE);
     let mut f = Tract3dFrame::default();
+    let k = BODY_MALE.scale;
+    // the engine's own opening for an articulation: half of 1.1 cm … the body's lip width
+    let engine = |a: &chimera::anatomy::human::HumanArtic| 0.5 * (1.1 + (BODY_MALE.lip_width - 1.1) * a.lip_width.clamp(0., 1.)) * k;
+    for (name, rounded) in [("a", false), ("i", false), ("ə", false), ("u", true)] {
+        let p = get(name);
+        m.compute(&p.artic, &p.shape, &mut f).unwrap();
+        let round = m.shape.lip_round;
+        assert_eq!(round > 0.5, rounded, "{name}: lipRound {round}");
+        assert!((m.parts.lip_w / engine(&p.artic) - (1. - 0.65 * round)).abs() < 1e-9, "{name}");
+    }
+    let u = get("u");
     m.compute(&u.artic, &ShapeParams::default(), &mut f).unwrap();
-    let wide = f.cuts().last().unwrap().width;
-    let floor = m.parts.lip_w;
+    let derived = f.cuts().last().unwrap().width;
+    assert!(derived < 1.2 * k, "/u/ opens {derived} cm wide at the lips");
+    // the offset still reaches the narrowest opening (35 % of the engine's)
     m.compute(&u.artic, &ShapeParams { lip_round: 1., ..ShapeParams::default() }, &mut f).unwrap();
-    let narrow = f.cuts().last().unwrap().width;
-    assert!((m.parts.lip_w / floor - 0.35).abs() < 1e-9, "{} vs {floor}", m.parts.lip_w);
-    assert!(narrow < 0.6 * wide, "the last cut is {narrow} cm wide with the lips rounded, {wide} without");
-    // without it nothing changes: the default leaves the engine's own opening
-    assert_eq!(ShapeParams::default().lip_round, 0.);
+    assert!((m.parts.lip_w / engine(&u.artic) - 0.35).abs() < 1e-9);
+    assert!(f.cuts().last().unwrap().width <= derived + 1e-9);
 }

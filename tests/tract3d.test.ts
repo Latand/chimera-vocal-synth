@@ -11,11 +11,12 @@ test("lab geometry: specs, presets, cuts, planes and meshes over the JSON bounda
   try {
     const before = api.airwayAreas(model, { ...api.NEUTRAL });
     const specs = api.tract3dSpecs();
-    expect(specs.length).toBe(41);
+    expect(specs.length).toBe(42);
     expect(new Set(specs.map((s) => s.key)).size).toBe(specs.length);
     for (const s of specs) expect(s.min <= s.default && s.default <= s.max).toBe(true);
     const presets = api.tract3dPresets(MALE);
     expect(presets.map((p) => p.name)).toContain("retroflex");
+    expect(presets.map((p) => p.name)).toContain("wide");
     for (const preset of presets) {
       expect(preset.label.length).toBeGreaterThan(0);
       const f = api.tract3d(model, preset.artic, preset.shape, { meshes: false, cut: 0.5 });

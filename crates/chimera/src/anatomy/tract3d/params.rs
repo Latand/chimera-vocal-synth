@@ -85,18 +85,19 @@ shape_params! {
     velum_width, "velumWidth", "velum", "cm", 1.5, 3.5, 2.6, "Soft palate width at its root";
     uvula_length, "uvulaLength", "velum", "cm", 0.5, 1.5, 1.0, "Uvula: length of the lobe hanging from the middle of the soft palate";
     uvula_width, "uvulaWidth", "velum", "cm", 0.4, 1.2, 0.8, "Uvula: width of the lobe";
-    pharynx_width_naso, "pharynxWidthNaso", "pharynx", "cm", 0.8, 2.2, 1.5, "Half-width of the upper pharynx";
-    pharynx_width_oro, "pharynxWidthOro", "pharynx", "cm", 0.8, 2.4, 1.6, "Half-width of the oropharynx";
-    pharynx_width_hypo, "pharynxWidthHypo", "pharynx", "cm", 0.8, 2.4, 1.5, "Half-width of the hypopharynx";
-    pharynx_shape, "pharynxShape", "pharynx", "", 1.5, 4.0, 2.2, "Posterior corners: low rounded, high square";
+    pharynx_width_naso, "pharynxWidthNaso", "pharynx", "cm", 0.8, 3.0, 1.7, "Upper pharynx: half-width at which the side walls have come forward to the back teeth (the air ends sooner, where they meet the tongue or the soft palate)";
+    pharynx_width_oro, "pharynxWidthOro", "pharynx", "cm", 0.8, 3.0, 1.9, "Oropharynx: half-width of the ring of walls";
+    pharynx_width_hypo, "pharynxWidthHypo", "pharynx", "cm", 0.8, 3.0, 2.4, "Hypopharynx: half-width of the ring of walls";
+    pharynx_shape, "pharynxShape", "pharynx", "", 2.0, 4.0, 2.2, "The ring's outline: 2 an ellipse, high flat at the back with square corners";
     lateral_squeeze, "lateralSqueeze", "pharynx", "", 0.0, 1.0, 0.0, "Lateral walls drawn inwards (pharyngeal constriction)";
-    epilarynx_width, "epilarynxWidth", "larynx", "cm", 0.3, 1.0, 0.6, "Half-width of the laryngeal tube";
+    epilarynx_width, "epilarynxWidth", "larynx", "cm", 0.3, 1.0, 0.6, "Size of the laryngeal tube: its sections' area against the voice's own (0.6: the same), taken up sideways";
     epiglottis_width, "epiglottisWidth", "larynx", "cm", 0.6, 1.4, 1.0, "Half-width of the epiglottis";
-    epiglottis_curl, "epiglottisCurl", "larynx", "1/cm", 0.0, 1.0, 0.4, "Backward curl of the epiglottis' sides";
-    piriform_depth, "piriformDepth", "larynx", "cm", 1.0, 2.5, 1.8, "Depth of the piriform fossae";
-    piriform_width, "piriformWidth", "larynx", "cm", 0.3, 1.0, 0.6, "Lateral radius of the piriform fossae";
-    vallecula_depth, "valleculaDepth", "larynx", "cm", 0.3, 1.2, 0.8, "Depth of the valleculae";
-    vallecula_width, "valleculaWidth", "larynx", "cm", 0.3, 1.0, 0.7, "Lateral radius of the valleculae";
+    epiglottis_curl, "epiglottisCurl", "larynx", "1/cm", 0.0, 1.0, 0.2, "Backward curl of the epiglottis' sides";
+    ary_fold_height, "aryFoldHeight", "larynx", "cm", 0.0, 1.5, 0.3, "How far the aryepiglottic folds stand above the hypopharynx's floor, between the laryngeal inlet and each piriform fossa";
+    piriform_depth, "piriformDepth", "larynx", "cm", 1.0, 2.5, 1.8, "Depth of the piriform fossae below the hypopharynx's floor";
+    piriform_width, "piriformWidth", "larynx", "cm", 0.3, 1.0, 0.5, "Lateral radius of the piriform fossae at their opening";
+    vallecula_depth, "valleculaDepth", "larynx", "cm", 0.3, 1.2, 0.8, "Depth of the valleculae below the epiglottis' tip";
+    vallecula_width, "valleculaWidth", "larynx", "cm", 0.3, 1.0, 0.7, "Lateral radius of the valleculae (they end under the epiglottis' edge at the latest)";
     lip_corner_shape, "lipCornerShape", "lips", "", 1.0, 4.0, 2.0, "Mouth opening outline: low a lens (spread), 2 an ellipse, high square";
     lip_thickness, "lipThickness", "lips", "×", 0.6, 1.6, 1.0, "Lip depth front to back";
     lip_round, "lipRound", "lips", "", 0.0, 1.0, 0.0, "Rounding: the corners drawn in beyond what Lip spread gives (a narrower, rounder opening)";
@@ -105,9 +106,12 @@ shape_params! {
     cheek_puff, "cheekPuff", "cheeks", "", 0.0, 1.0, 0.0, "Puffed cheeks: widens the vestibule";
 }
 
-/// Constants of `derive`. Fitted against the DVTD reference by `chimera tract3d fit-derive`
-/// (validation-plan.md, T-default); see docs/tract3d/validation-results.md.
-pub const DERIVE: [f64; 8] = [0.25, 0.35, 0.3, 0.25, 0.5, 0.9, 0.3, 0.3];
+/// Constants of `derive`. `chimera tract3d fit-derive` fits them against the DVTD reference
+/// (validation-plan.md, T-default); what the fit showed and why these values stand is in
+/// docs/tract3d/validation-results.md (the first eight are the starting values; the lips'
+/// rounding is what the fitted rounded vowels use; the squeeze is between what the fitted open
+/// vowels use and what the median default distance asks for).
+pub const DERIVE: [f64; 10] = [0.25, 0.35, 0.3, 0.25, 0.5, 0.9, 0.3, 0.3, 1.0, 0.9];
 
 /// 3D parameters implied by the engine's 17 articulators (design §5), with the default
 /// constants.
@@ -116,8 +120,9 @@ pub fn derive(a: &HumanArtic) -> ShapeParams {
 }
 /// `derive` with explicit constants (for fitting them):
 /// [bracing at the back, bracing at the dorsum, sibilant groove, groove at the tip, sibilant
-///  side bracing, lateral lowering, curl narrowing, root concavity]
-pub fn derive_with(a: &HumanArtic, c: &[f64; 8]) -> ShapeParams {
+///  side bracing, lateral lowering, curl narrowing, root concavity, lip rounding, pharyngeal
+///  squeeze]
+pub fn derive_with(a: &HumanArtic, c: &[f64; 10]) -> ShapeParams {
     let mut p = ShapeParams::default();
     let lateral = a.lateral.clamp(0., 1.);
     let curl = a.tt_curl.clamp(0., 1.);
@@ -133,6 +138,16 @@ pub fn derive_with(a: &HumanArtic, c: &[f64; 8]) -> ShapeParams {
     p.side_tip = c[4] * 0.8 * ridge - c[5] * lateral;
     p.side_root = c[7] * (-a.root).max(0.);
     p.tip_width = 0.55 - 0.2 * curl;
-    p.lip_corner_shape = 2.0 - 0.7 * a.lip_width.clamp(0., 1.);
+    // spread lips nearly shut meet in a lens with pointed corners; opened, the same lips part in
+    // a rounded opening (the lower lip a U, not a V)
+    p.lip_corner_shape = 2.0 - 0.7 * a.lip_width.clamp(0., 1.) + 1.3 * smoothstep(0.5, 1.8, a.lip_ap);
+    // rounded lips: protruded and drawn together, the corners come in beyond the engine's own
+    // narrowest opening
+    // (from the lips' resting protrusion, 0.2, on: lips at rest are not rounded)
+    p.lip_round = (c[8] * (1. - a.lip_width.clamp(0., 1.)) * smoothstep(0.2, 0.7, a.lip_prot)).clamp(0., 1.);
+    // a low, retracted tongue (open back vowels) comes with the pharynx's side walls drawn in:
+    // the constrictors that pull the root back also narrow the ring
+    let retracted = ((2.9 - a.tb_x) / 1.4).clamp(0., 1.) * ((7.6 - a.tb_y) / 1.6).clamp(0., 1.) + 0.8 * (-a.root).max(0.);
+    p.lateral_squeeze = (c[9] * retracted).clamp(0., 1.);
     p
 }

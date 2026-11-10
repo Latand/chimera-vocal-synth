@@ -105,7 +105,7 @@ impl Tract3dFrame {
 }
 
 const AIR_NAMES: [&str; lamina::N_AIR] = ["envelope", "tube", "piriform", "piriform", "vallecula", "vallecula"];
-const TISSUE_NAMES: [&str; lamina::N_TISSUE] = ["tongue", "epiglottis", "upperLip", "lowerLip", "upperTeeth", "lowerTeeth", "pharynxWall", "pharynxWall", "fauces", "cheek", "cheek"];
+const TISSUE_NAMES: [&str; lamina::N_TISSUE] = ["tongue", "epiglottis", "upperLip", "lowerLip", "upperTeeth", "lowerTeeth", "pharynxWall", "pharynxWall", "fauces", "cheek", "cheek", "aryFold"];
 
 #[derive(Clone, Debug, Serialize)]
 pub struct NamedPolygon {
@@ -254,15 +254,16 @@ impl Tract3d {
         self.cavities(out);
         Ok(())
     }
-    /// Glottis, five points up the laryngeal tube, then the engine's grid midpoints; smoothed
-    /// with fixed ends and resampled every `STEP`.
+    /// Glottis, five points up the laryngeal tube's own axis, then the engine's grid midpoints;
+    /// smoothed with fixed ends and resampled every `STEP`.
     fn centreline(&mut self, out: &mut Tract3dFrame) {
         let f = &self.midline;
         self.path.clear();
         self.path.push(f.glottis);
         let tube = 2.0 * self.tract.body.scale * self.tract.body.pharynx;
         for i in 1..6 {
-            self.path.push(add(f.glottis, v(0., tube * i as f64 / 5.)));
+            let y = tube * i as f64 / 5.;
+            self.path.push(v(self.parts.tube_at(y / self.parts.epi_len).0, f.glottis.y + y));
         }
         self.path.extend(f.grid.iter().map(|g| g.mid));
         for _ in 0..8 {
@@ -309,20 +310,23 @@ impl Tract3d {
                     }
                     // the opening: the pocket's chord along the hypopharynx floor
                     if !p.is_empty() {
-                        let (centre, rx, ry) = self.parts.piriform_ellipse();
-                        let (cz, rz) = self.parts.piriform(if l.z < 0. { -1. } else if l.z > 0. { 1. } else if j == 0 { -1. } else { 1. });
-                        let rad = (1. - ((l.z - cz) / rz).powi(2)).max(0.);
-                        let dy = (self.parts.bottom - centre.y) / (ry * sqrt(rad)).max(1e-9);
-                        if dy.abs() < 1. {
-                            c[1] += 2. * rx * sqrt(rad) * sqrt(1. - dy * dy) * dz * w;
+                        let side = if l.z < 0. { -1. } else if l.z > 0. { 1. } else if j == 0 { -1. } else { 1. };
+                        if let Some((_, cz, rx, rz)) = self.parts.piriform_section(side, self.parts.bottom) {
+                            let rad = 1. - ((l.z - cz) / rz).powi(2);
+                            if rad > 0. {
+                                c[1] += 2. * rx * sqrt(rad) * dz * w;
+                            }
                         }
                         c[3] = self.parts.bottom;
                     }
                     let q = &l.air[AIR_VALLECULA[j]];
                     c[4] += poly_area(q).abs() * dz * w;
-                    for p in q {
-                        c[5] = c[5].min(p.y);
-                        c[6] = c[6].max(p.y);
+                    if let Some((floor, top)) = (!q.is_empty()).then(|| self.parts.vallecula_span(l.z)).flatten() {
+                        // the deepest lamina's floor and the leaf's tip above it
+                        if floor < c[5] {
+                            c[5] = floor;
+                            c[6] = top;
+                        }
                     }
                 }
             }

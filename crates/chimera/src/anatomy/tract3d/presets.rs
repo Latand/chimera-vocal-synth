@@ -13,9 +13,10 @@ pub struct Preset {
     pub shape: ShapeParams,
 }
 
-pub const PRESET_NAMES: [(&str, &str); 15] = [
+pub const PRESET_NAMES: [(&str, &str); 16] = [
     ("flat", "flat tongue"),
     ("a", "open vowel /a/"),
+    ("wide", "mouth wide open"),
     ("i", "close front /i/"),
     ("u", "close back rounded /u/"),
     ("ə", "neutral /ə/"),
@@ -57,6 +58,19 @@ pub fn presets(body: BodyMix) -> Vec<Preset> {
                 a = posture("ə", body);
                 // cancel what derive adds, and square the margins
                 p.edge_round = 4.;
+            }
+            "wide" => {
+                // the jaw as far down as it goes, the lips as far apart, the tongue low and flat
+                // behind the lower teeth: the mouth opened to sing or to yawn. A posture to look
+                // at (the voice has no such target).
+                a = posture("a", body);
+                a.jaw = 2.6;
+                a.lip_ap = 2.4;
+                a.tb_x = 2.5;
+                a.tb_y = 5.0;
+                let tip = super::super::human::rest_tip(a.jaw, a.tb_x, a.tb_y);
+                a.tt_x = tip.x;
+                a.tt_y = tip.y;
             }
             "s" => {
                 // jaw nearly closed, tip forward under the ridge, margins braced on the teeth:
@@ -111,7 +125,7 @@ pub fn presets(body: BodyMix) -> Vec<Preset> {
                 a = posture("ə", body);
                 a.tb_x = 2.7;
                 a.tb_y = 7.5;
-                a.root = -0.7;
+                a.root = -1.0;
                 let tip = super::super::human::rest_tip(a.jaw, a.tb_x, a.tb_y);
                 a.tt_x = tip.x;
                 a.tt_y = tip.y;

@@ -3,7 +3,6 @@
 //! project's (set to enclose what the DVTD speakers show) or a cited number; the CLI tabulates
 //! them and the tests hold them. The reference's own measurements are not written here: they
 //! stay with the data, outside the repository.
-use super::lamina::Lamina;
 use super::*;
 
 #[derive(Clone, Debug, Serialize)]
@@ -75,9 +74,6 @@ impl Tract3d {
     /// Air along a line in one lamina (the midsagittal one is `lamina_count() / 2`).
     pub fn line_air(&self, lamina: usize, o: Vec2, u: Vec2, out: &mut Row) {
         cut::intervals(&self.laminae[lamina], o, u, out);
-    }
-    pub(super) fn lamina(&self, i: usize) -> &Lamina {
-        &self.laminae[i]
     }
 }
 
@@ -199,15 +195,14 @@ pub fn check_one(m: &Tract3d, f: &Tract3dFrame, name: &str, shape: &ShapeParams,
         }
         "ə" => {
             for c in f.cavities.iter().filter(|c| c.kind == "piriform" && c.side > 0) {
-                let (lo, hi) = (2.1 * k * k * k, 2.9 * k * k * k);
-                push("piriform fossa volume", format!("{:.2} cm³ each", c.volume), "2.1–2.9 cm³ (male; scaled by size³) [R12]", hinge(lo - c.volume) + hinge(c.volume - hi));
+                // the source's abstract gives the pair's volume (2.1–2.9 cm³), its text each cavity's
+                let (lo, hi) = (1.0 * k * k * k, 1.4 * k * k * k);
+                push("piriform fossa volume", format!("{:.2} cm³ each", c.volume), "1.0–1.4 cm³ each (male; scaled by size³) [R12]", hinge(lo - c.volume) + hinge(c.volume - hi));
                 push("piriform fossa depth", format!("{:.2} cm", c.depth), "1.6–2.0 cm (male; scaled by size) [R12]", hinge(1.6 * k - c.depth) + hinge(c.depth - 2.0 * k));
             }
-            let mid = m.lamina(ROWS / 2);
-            let off = m.lamina(ROWS / 2 + (0.5 / Z_STEP) as usize);
-            let at_mid = mid.air[AIR_VALLECULA[0]].len() + mid.air[AIR_VALLECULA[1]].len();
-            let at_off = off.air[AIR_VALLECULA[0]].len() + off.air[AIR_VALLECULA[1]].len();
-            push("valleculae off the midline only", format!("pocket outline points at z = 0: {at_mid}, at z = 0.5 cm: {at_off}"), "absent at z = 0, present at 0.5 cm", if at_mid == 0 && at_off > 0 { 0. } else { 1. });
+            // two troughs with the median glossoepiglottic fold a ridge between them
+            let (mid, off) = (m.parts.vallecula_depth_at(0.), m.parts.vallecula_depth_at(0.5 * k));
+            push("valleculae beside the median fold", format!("{off:.2} cm deep at z = 0.5 cm, {mid:.2} cm over the fold"), "≥ 0.5 cm (scaled by size) beside the fold, the fold at most 60 % of that", hinge(0.5 * k - off) + hinge(mid - 0.6 * off));
         }
         _ => {}
     }

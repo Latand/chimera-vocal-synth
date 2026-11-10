@@ -240,6 +240,9 @@ fn gum(m: &mut ElementMesh, p: &Parts, arch: &Arch, upper: bool, side: f64, span
         let f = if r == rows - 1 { 1. } else { (r % PER) as f64 / PER as f64 };
         let u = lerp(spans[j].0, spans[j].1, f).max(0.004);
         let (b, lift, extra) = cols[c];
+        // (the lower gum's skirts are short: the chin's skin lies close under the lower incisors'
+        // roots, and a longer skirt came out through it when the jaw was down)
+        let extra = if upper { extra } else { 0.45 * extra };
         // the margin (columns 2 and 5) dips at each tooth's middle and rises to a papilla between
         let margin = if c == 2 || c == 5 { -0.13 * sin(PI * f) } else { 0. };
         let (xt, mut lat) = arch_point(arch, u, b * drawn(u));
@@ -329,47 +332,64 @@ pub fn meshes(p: &Parts) -> Vec<ElementMesh> {
         let y1 = p.wall[p.wall.len() - 1].y;
         m.grid(26, 21, 2, 2, |r, c| {
             let y = lerp(y0, y1, r as f64 / 25.);
-            let w = c as f64 / 20. * 2. - 1.;
+            // (closer together towards the ring's sides, where it turns forward; drawn to 93 %
+            // of its half-width: beyond, the ring runs forward inside the tongue's sides and
+            // the throat's walls, and low in the neck its last stretch stood in the skin)
+            let w = 0.93 * sin(0.5 * PI * (c as f64 / 20. * 2. - 1.));
             let z = w * p.pharynx_width(y);
             p3(p.wall_point(y, z), z)
         });
     }
-    // ---- larynx: laryngeal tube, epiglottis, piriform fossae, valleculae
+    // ---- larynx: laryngeal tube, piriform fossae, valleculae, the epiglottis' leaf
     {
         let m = &mut out[4];
         m.material("larynx");
-        let ew = s.epilarynx_width * k;
         let nt = parts::TUBE_SAMPLES + 1;
         m.grid(nt, 25, 4, 3, |r, c| {
-            let y = p.epi_len * r as f64 / (nt - 1) as f64;
-            let rx = p.tube[r] / (PI * ew);
+            let (x, a, b) = p.tube[r];
+            let y = p.glottis.y + p.epi_len * r as f64 / (nt - 1) as f64;
             let th = c as f64 / 24. * 2. * PI;
-            [p.glottis.x + rx * cos(th), p.glottis.y + y, ew * sin(th)]
+            [x + a * cos(th), y, b * sin(th)]
         });
-        // the fossae and the valleculae are the ellipsoids the laminae cut (`Parts::piriform*`,
-        // `Parts::vallecula*`): the fossa is drawn up to the hypopharynx floor it opens into
         for side in [-1., 1.] {
-            let (cz, rz) = p.piriform(side);
-            let (centre, rx, ry) = p.piriform_ellipse();
-            let top = crate::math::asin(((p.bottom - centre.y) / ry).clamp(-1., 1.));
+            // a fossa is the half-ellipsoid the laminae cut (`Parts::piriform_section`), drawn
+            // from its apex up to the hypopharynx floor it opens into
+            let (cx, cz, rx, rz) = p.piriform(side);
+            let (top, height) = p.piriform_top();
+            let floor = crate::math::asin(((p.bottom - top) / height).clamp(-1., 0.));
             m.grid(11, 17, 2, 2, |r, c| {
-                let la = lerp(-0.5 * PI, top, r as f64 / 10.);
+                let la = lerp(-0.5 * PI, floor, r as f64 / 10.);
                 let lo = c as f64 / 16. * 2. * PI;
-                [centre.x + rx * cos(la) * cos(lo), centre.y + ry * sin(la), cz + rz * cos(la) * sin(lo)]
+                [cx + rx * cos(la) * cos(lo), top + height * sin(la), cz + rz * cos(la) * sin(lo)]
             });
-            let (vc, vrx, vry) = p.vallecula_ellipse();
-            let (vz, vrz) = p.vallecula(side);
+            // a vallecula: its floor at the leaf, then the tongue's root up to the lid, across
+            // the trough (`Parts::vallecula_span`, `root_x`, `epiglottis_front_x`)
+            let (vz, vr) = p.vallecula(side);
             m.grid(9, 13, 2, 2, |r, c| {
-                let la = (r as f64 / 8. - 0.5) * PI;
-                let lo = c as f64 / 12. * 2. * PI;
-                [vc.x + vrx * cos(la) * cos(lo), vc.y + vry * sin(la), vz + vrz * cos(la) * sin(lo)]
+                let z = vz + vr * (r as f64 / 8. * 2. - 1.) * 0.98;
+                let top = p.epiglottis_tip(z).y;
+                let (floor, top) = p.vallecula_span(z).unwrap_or((top, top));
+                let lid = p.dorsal_at(0, z).y;
+                if c == 0 {
+                    return [p.epiglottis_front_x(floor, z), floor, z];
+                }
+                let y = lerp(floor, lid, (c - 1) as f64 / 11.);
+                [p.root_x(y, z).max(p.epiglottis_front_x(y.min(top), z)), y, z]
             });
         }
+        // the leaf: its laryngeal surface from the base to its tip, then its lingual surface back
+        // down (the laminae's plate, `Parts::epiglottis_at` and its thickness)
         m.material("epiglottis");
         let ewid = s.epiglottis_width * k;
-        m.grid(7, 13, 2, 3, |r, c| {
+        let th = p.epiglottis_thickness();
+        m.grid(14, 13, 2, 3, |r, c| {
             let z = (c as f64 / 12. * 2. - 1.) * ewid * 0.999;
-            p3(p.epiglottis_at(r as f64 / 6., z), z)
+            let top = p.epiglottis_top(z);
+            if r < 7 {
+                p3(p.epiglottis_at(top * r as f64 / 6., z), z)
+            } else {
+                p3(add(p.epiglottis_at(top * (13 - r) as f64 / 6., z), th), z)
+            }
         });
     }
     // ---- lips: their inner surfaces, closing beyond the mouth's corners
