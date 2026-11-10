@@ -18,8 +18,9 @@ the code (`crates/chimera/src/anatomy/tract3d/`) is the reference.
   tongue into self-intersecting polygons, and parity filling turned the folds into air strips
   beside the teeth (the side strips and extra channels in that build's MRI comparison). Now
   (`parts.rs`):
-  - the posterior pharyngeal wall moves only horizontally, the palate and the lips only
-    vertically: graphs stay graphs;
+  - the palate and the lips move only vertically: graphs stay graphs (the pharyngeal walls
+    are a tissue polygon of their own since §0.3; at first the posterior wall moved
+    horizontally);
   - the tongue's dorsal surface moves along fibres from itself to a core curve inside the tongue
     (depth `T(t)`: 1.2 cm at the root, 1.5 cm over the body, 0.9 at the blade, 0.45 at the tip):
     `p = c + n·T·λ`, `λ = E(w) + (side(t)·S(w) − groove(t)·G(z))/T`, clamped to [0, 3]. `E` is
@@ -43,27 +44,26 @@ the code (`crates/chimera/src/anatomy/tract3d/`) is the reference.
   cheeks rest on the teeth, as in most MRI).
 - **Palate.** The vault drops at most to the gum line (occlusal plane + crown height), so the
   alveolar ridge, already near the gum line, barely drops.
-- **Pharynx.** Beyond its half-width a lamina is wall (tissue bands found per lamina from the
-  width profile). The depth of the posterior corners' rounding is the engine's own pharyngeal gap
-  at that height (its grid samples), interpolated: a ray of our own could pass over the top of
-  the tongue and jump.
-- **Larynx.** The laryngeal tube reproduces the engine's epilarynx profile
-  (`HumanVocalTract::epilarynx_area`). Each piriform fossa is an ellipsoid beside it whose top
-  opens into the floor of the hypopharynx; its volume and depth are measured from the laminae
-  (2.6 cm³, 1.75 cm by default; published 2.1–2.9 cm³ and 1.6–2.0 cm [R12]).
+- **Pharynx and larynx.** Rebuilt in §0.3 (a ring of walls, a free epiglottis, a lofted
+  laryngeal tube, pouch-shaped fossae of the published size). The first build made a lamina
+  beyond the pharynx's half-width all wall, rounded the posterior corners by the engine's own
+  midline gap, and set an ellipsoid of 2.6 cm³ beside the tube for each fossa (the published
+  pair's volume read as one fossa's).
 - **Velum and uvula.** The uvula is a lobe `uvulaLength` cm long and `uvulaWidth` wide at the
   middle of the soft palate's free edge; beside it the edge recedes towards the root (the faucial
   arches), so a lamina meets the velum only where it is that wide.
 - **Regions.** A cut drops regions under 0.01 cm² (one-lamina slivers between a tongue margin
   and a tooth row, far below MRI resolution) from its area and channel count; the faded area
   keeps them for continuity.
-- **Parameters.** 40 at first, 41 with `lipRound` (§0.2) (`params.rs`, one table for struct, JSON names, ranges and the lab's
-  controls). `toothGap` was dropped (interdental gaps are not modelled). `derive` maps the 17
-  articulators as §5 says; its eight constants were fitted against DVTD once
-  (validation-results.md) and the fit did not justify changing the starting values.
-- **Presets.** 15 postures: the engine's own targets for a / i / u / ə / s / ʃ / l / f / ç / x,
-  plus flat, funnel, cupped, bunched and retroflex /ɹ/. /s/, /ʃ/, /l/ and retroflex /ɹ/ were tuned
-  with `chimera tract3d tune` until their feature checks pass (T-features, male template).
+- **Parameters.** 40 at first, 41 with `lipRound` (§0.2), 42 with `aryFoldHeight` (§0.3)
+  (`params.rs`, one table for struct, JSON names, ranges and the lab's controls). `toothGap`
+  was dropped (interdental gaps are not modelled). `derive` maps the 17 articulators as §5
+  says, with ten constants since §0.3; fitting them against DVTD did not justify changing the
+  first eight (validation-results.md).
+- **Presets.** 16 postures: the engine's own targets for a / i / u / ə / s / ʃ / l / f / ç / x,
+  plus flat, funnel, cupped, bunched and retroflex /ɹ/, and the mouth wide open (§0.3). /s/,
+  /ʃ/, /l/ and retroflex /ɹ/ were tuned with `chimera tract3d tune` until their feature
+  checks pass (T-features, male template).
 - **Side cavities** reported: piriform fossae and valleculae (volume, depth, opening, where they
   attach). The sublingual and buccal spaces are geometry (they appear in cuts) but have no
   descriptor yet.
@@ -185,6 +185,83 @@ reads its 1D area law** (README, deferred).
   The audio thread's load in `tools/e2e.ts` was 42 % and 41 % (desktop and phone viewport) on
   one run and 50 % and 60 % on another under the heavier load; the reviewed head measured 41 %
   and 42 %. The voice's code is unchanged in this stage.
+
+### 0.3 Slice fix (2026-11-10): the lower tract's shapes, the head's look
+
+The slice-critic judged the integrated head from its own frames: the cuts of the pharynx and
+larynx were blocky polygons, the same in every sound, with no epiglottis in the lumen and a
+pharynx 3.0 cm wide in every posture; the head read as a mannequin's bust with a slit of a
+mouth; /u/ had spread lips; the cut face read as icons. What answers each (the engine's sound
+is untouched; `git log` has the reasons and what was ruled out):
+
+- **The pharynx is a ring of walls** (`Parts::ring_at`): one tissue polygon per lamina, the
+  posterior wall on the midline, coming forward round the sides until, at the ring's
+  half-width (`pharynxWidth*`), it has reached the back teeth (the thyroid's plates low in the
+  throat). Its outline is a superellipse (`pharynxShape`, 2 an ellipse; squarer in the
+  hypopharynx, which lies flat on the spine). The air ends sideways where the ring meets what
+  stands in front of it: the tongue's root, the epiglottis and its folds, the pillars. So the
+  lumen's width follows its depth (/i/ is wider than /a/ at the same level without any
+  parameter saying so), and its sides are where two curved surfaces meet. `lateralSqueeze`
+  draws the ring's sides in; `derive` sets it for a low, retracted tongue.
+- **The tongue's back** is convex across its whole width wherever it faces the pharynx (the
+  grooves beside it run forward as horns); what faces the palate stays flat across the middle.
+- **The epiglottis is a leaf**: its laryngeal surface curled back at the sides
+  (`epiglottisCurl`), highest on the midline and lowest at its edges, free above the
+  valleculae. Beyond its edges the front wall rises again into the folds that run to the
+  pharynx's sides; the saddle at each edge is where a vallecula opens into the pharynx beside
+  the leaf. In a cut through its free part the leaf crosses the lumen as a crescent.
+- **The valleculae** are the air between the leaf's lingual surface and the tongue's root (the
+  engine's own root curve, moved with the tongue's surface above it), `valleculaDepth` deep
+  below the leaf's tip, with the median glossoepiglottic fold a ridge between them (55 % of
+  their depth; the two communicate over it). They were two ellipsoids inside tongue tissue.
+- **The laryngeal tube** is a loft of elliptical sections whose areas are the engine's
+  epilarynx profile with its steps rounded (two passes of ¼-½-¼ over 1 mm samples), times
+  `epilarynxWidth` / 0.6 (a speaker's tube against the voice's). Each section is as long front
+  to back as the larynx leaves room and as wide as its area asks: the ventricle bulges
+  sideways, the ventricular folds draw in, the vestibule widens to its rim; the tube leans back
+  to where the engine's inner wall begins, and a narrowed tube (twang) shuts from behind. The
+  centreline runs up the tube's own axis.
+- **Each piriform fossa** is the lower half of an ellipsoid whose equator lies at the
+  hypopharynx's floor: a pouch widest at its opening, `piriformDepth` deep, beside the tube's
+  rim beyond the aryepiglottic fold, between the ring behind it and the front wall. By default
+  1.27 cm³ and 1.8 cm deep; published 1.0–1.4 cm³ each and 1.6–2.0 cm [R12].
+- **The aryepiglottic folds** are ridges on the hypopharynx's floor between the laryngeal
+  inlet and each fossa (`aryFoldHeight`): how high the three lower channels stay apart differs
+  between speakers by about a centimetre.
+- **The faucial pillars** begin where they leave the tongue's sides and have a rounded face
+  and foot (they were a block over every height, a flat front for the lower pharynx).
+  **The cheeks** stand in between the tooth rows beyond the mouth's corners when the jaw is
+  down.
+- **`derive`** has ten constants: the lips' rounding from the engine's protrusion and spread
+  (above the resting protrusion), and the pharynx's squeeze for a low retracted tongue, joined
+  the eight. Opened lips part in a rounded opening (the corner exponent rises with the
+  aperture).
+- **Display.** Every drawn surface still comes from the helpers the laminae are cut from
+  (the tube's sections, the fossae's pouches, the valleculae's floor and the root in front of
+  it, the leaf with its thickness, the ring); the test holds the laminae's own polygons on the
+  same helpers. The drawn ring stops at 93 % of its half-width (beyond, it runs forward inside
+  the tongue's sides and the throat's walls). Not drawn: the aryepiglottic folds' ridges and
+  the pillars (they are in the cuts).
+- **The head** ([head-asset.md](head-asset.md)): a sculpt from the same CC0 detail targets, a
+  higher cut through the neck, a stand with a bevelled edge; in the rig the loops of skin
+  inside the lips' line are rolled in behind the lips' edges, the throat's skin stays over the
+  larynx when the jaw turns, and a mouth opened beyond 1.1 cm draws its lips off the teeth
+  (`bared`; the one place where the skin leaves the engine's lips, which stay within a
+  millimetre or two of the incisors' edges at any opening). Inside a whole head the tract's
+  surfaces darken with their depth behind the lips; the skin has a soft highlight and the lips
+  a gloss.
+- **The cut face** (`section.ts`): the brain's medial face (sulci, corpus callosum, thalamus,
+  brain stem, the cerebellum's white tree), the cervical spine on the neck's curve with the
+  dens between the atlas' arches, the sphenoid and frontal sinuses, the hyoid, the thyroid's
+  front, the cricoid's arch and plate with an arytenoid, the trachea with its rings and the
+  gullet behind it, and a tongue of muscle with faint curved fibres. Still a drawing that
+  measures nothing; the air is the lamina's.
+- **Lab.** A fitted plane in the CUT screen stays clear of its axis label and scale bar. A
+  sixteenth posture, "mouth wide open": the jaw and lips at the far end of their ranges, the
+  tongue low and flat (a posture to look at; the voice has no such target).
+- **Cost** (native release, 65 laminae, 73 cuts, the machine under other load): median
+  1.8 ms per compute over the 16 presets, slowest 3.1 ms; the display meshes 0.8 ms for 9 972
+  vertices. The ring's polygon and the pockets cost 0.3 ms over §0.2's 1.5 ms.
 
 ## 1. Decisions in one screen
 

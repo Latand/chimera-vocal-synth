@@ -70,7 +70,8 @@ functions: **d = RMS over 101 points of normalised length of log2(A₁ / A₂)**
 
 Published: repeated 3D MRI of the same task varies by about 8 % [R19] (≈ 0.11 in d units);
 formant discrimination is about 14 Hz below 800 Hz and 1.5 % in the F2 region for trained
-listeners [R23]; piriform fossae 2.1–2.9 cm³ and 1.6–2.0 cm deep [R12].
+listeners [R23]; piriform fossae 1.0–1.4 cm³ each (2.1–2.9 cm³ the pair) and 1.6–2.0 cm deep
+[R12].
 
 ## 5. Tests and pass lines
 
@@ -139,8 +140,10 @@ Each is a yes/no check plus the measured value.
 
 ### T-anatomy: side cavities
 
-Piriform fossa volume 2.1–2.9 cm³ each and depth 1.6–2.0 cm for the male template [R12] (female
-and child scaled with the body); valleculae present off the midline and absent at z = 0.
+Piriform fossa volume 1.0–1.4 cm³ each and depth 1.6–2.0 cm for the male template [R12] (female
+and child scaled with the body; the plan first read the pair's 2.1–2.9 cm³ as each fossa's);
+valleculae at least 0.5 cm deep beside the median fold, which stands in them as a ridge (at most
+60 % of their depth over it).
 
 ### T-/ɹ/: English rhotics (USC)
 

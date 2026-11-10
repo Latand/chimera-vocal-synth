@@ -46,8 +46,13 @@ geometry today: one midsagittal distance stands for every shape.
 ### 2.1 Pharynx, side branches and larynx
 
 - **Piriform fossae (sinuses).** Paired side branches at the bottom of the pharynx, lateral to the
-  laryngeal vestibule. Volumetric MRI of four speakers gave 2.1–2.9 cm³ each and 1.6–2.0 cm depth;
-  they put spectral troughs at 4–5 kHz and also lower the formants below them [R12]. 3D-printed
+  laryngeal vestibule. Volumetric MRI of four speakers gave 2.1–2.9 cm³ for the pair, 1.0–1.4 cm³
+  for each cavity, and 1.6–2.0 cm depth (typically 1.8 cm); they are funnel-shaped pouches behind
+  and beside the laryngeal tube, each with an opening larger than the tube's, joining the pharynx
+  near the top of the tube with the aryepiglottic folds as the common boundary. (The abstract
+  gives the pair's volume; the report version of the paper, read 2026-11-10, gives each
+  cavity's. The first build took the abstract's figure for one fossa and made them twice too
+  large.) They put spectral troughs at 4–5 kHz and also lower the formants below them [R12]. 3D-printed
   tracts confirm the 4–5 kHz trough [R13]; area-function work found they lower formants
   significantly [R6]; 3D FDTD on MRI geometry found their effect the largest of the side cavities
   [R10].
@@ -221,7 +226,7 @@ Keys used above. "Abstract" means only the abstract (or a database summary) was 
 | R9 | Same authors' conference version, ICSLP 1994 | ISCA Archive, ICSLP 1994 proceedings | abstract |
 | R10 | Acoustic analysis of the vocal tract during vowel production by finite-difference time-domain method. J. Acoust. Soc. Am. 2010 | doi:10.1121/1.3502470 | abstract |
 | R11 | Acoustic roles of the laryngeal cavity in vocal tract resonance. J. Acoust. Soc. Am. 2006 | doi:10.1121/1.2261270 | abstract |
-| R12 | Acoustic characteristics of the piriform fossa in models and humans. J. Acoust. Soc. Am. 1997 | doi:10.1121/1.417990 | abstract |
+| R12 | Acoustic characteristics of the piriform fossa in models and humans. J. Acoust. Soc. Am. 1997 | doi:10.1121/1.417990; the same paper as a technical report of its institute, TR-H-0189 (results.atr.jp/35th/techreport/TR-H-0189/) | abstract; the report's sections on the morphology (pages 5–8) |
 | R13 | A new method to explore the spectral impact of the piriform fossae on the singing voice. PLoS ONE 2014 (open access) | doi:10.1371/journal.pone.0102680 | abstract |
 | R14 | Modeling the influence of piriform sinuses and valleculae on the vocal tract resonances and antiresonances. Acta Acustica united with Acustica 2015 | research-database summary | summary |
 | R15 | Articulatory interpretation of the "singing formant". J. Acoust. Soc. Am. 1974 | doi:10.1121/1.1914609 | title |

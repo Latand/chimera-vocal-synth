@@ -123,8 +123,8 @@ or public text. Our own error measurements against a dataset are results and may
 
 | Number | Value | Source |
 |---|---|---|
-| Piriform fossa volume | 2.1–2.9 cm³ each (4 speakers) | [R12] |
-| Piriform fossa depth | 1.6–2.0 cm | [R12] |
+| Piriform fossa volume | 1.0–1.4 cm³ each, 2.1–2.9 cm³ the pair (4 speakers) | [R12] |
+| Piriform fossa depth | 1.6–2.0 cm, typically 1.8 cm | [R12] |
 | Piriform trough frequency | 4–5 kHz | [R12, R13] |
 | 3D-MRI morphology repeat variation | about 8 % | [R19] |
 | Shape/bending matters above | 4–5 kHz | [R18] |

@@ -26,6 +26,20 @@ the head's source and licence: [head-asset.md](head-asset.md); the numbers:
 by the operator's order of work the shapes came first, and the port that computes every human
 sound from the 3D geometry is the next lane (below, deferred).
 
+**Slice fix (2026-11-10).** A critic judged the integrated head from its own frames and
+failed it on the lower tract's shapes and on the look. Answered here: the pharynx is a ring
+of walls that closes on the tongue (its width follows its depth), the epiglottis stands in the
+lumen as a leaf with the valleculae in front of it, the laryngeal tube is a smooth loft, the
+piriform fossae are pouches of the published size (the first build had read the pair's volume
+as one fossa's) with the aryepiglottic folds between them and the inlet; `derive` rounds the
+3D lips from the engine's own lip articulators; the head has a sculpted skull on a slim neck
+and a bevelled cut, a mouth that opens to show both tooth rows, and a cut face with anatomy
+drawn on it. Against MRI the lower pharynx's channels now match on 44 of 47 and 86 of 93 cuts
+(35 and 45 before) and the female fit improved; the cut-shape measures and the default
+shapes are still outside their lines, with the reasons per station and per sound in the
+results. What changed: [model-design.md §0.3](model-design.md#03-slice-fix-2026-11-10-the-lower-tracts-shapes-the-heads-look);
+the numbers: [validation-results.md](validation-results.md).
+
 ## The requirement
 
 The operator's request (2026-11-09, in Ukrainian; the verbatim text is kept in the task record),
@@ -129,6 +143,14 @@ before the headline set.
   (a uvular trill or snore, a source like the vocal folds). Both belong with the sound's port.
 - **The head's look beyond the mesh:** a skin texture (pores, brows, lashes), eyes that open,
   hair; the single crowns' cusps and the gums are drawn by rule (no scan stands behind them).
+- **From the slice fix (2026-11-10), what would bring the cut shape to the two speakers' own
+  difference:** rounded ends where the pharynx's ring meets the tongue (the lumen ends in
+  thin tips), tooth rows with rounded crowns in the laminae and incisors without the steps
+  beside the midline, a lip tube that ends on the lips' own curve, and a laryngeal inlet as
+  long front to back as a real one (the engine's larynx leaves less room, so the tube's rim
+  and the fossae beside it stand too wide). The last needs the midline, which is the
+  engine's: it belongs with the sound's port. Also not drawn in 3D: the aryepiglottic folds'
+  ridges and the faucial pillars (they are in the cuts).
 
 ## Notes
 

@@ -62,6 +62,8 @@ and the CLI) under a React UI. See the README.
   (the fossae did, by 3 mm). Check: the same test (`drawn_side_cavities_and_walls_are_the_sliced_geometry`).
 - **The head's skin is display only and follows the engine**: its lips are fitted to
   `Tract3d::display`'s lip line and its jaw to the engine's turn (`src/ui/render/head/rig.ts`).
+  One deliberate difference: opened beyond 1.1 cm the skin's lips draw off the teeth (`bared`),
+  which the engine's lips never do; the cuts measure the engine's lips.
   Check: `bun test tests/head.test.ts`.
 - **Voice tuning follows `docs/hill-climb/README.md`** and never edits its judges.
 

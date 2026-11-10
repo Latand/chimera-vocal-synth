@@ -1,24 +1,27 @@
 # Validation results
 
-*Measured 2026-11-10 on the model as integrated (model-design.md §0.2), by
-`chimera tract3d validate` with 3000 fit iterations per sound and 600 for each speaker's
-anatomy (281 s on the shared machine, three jobs). How the comparison works:
+*Measured 2026-11-10 on the model after the slice fix (model-design.md §0.3), by
+`chimera tract3d validate` with 3000 fit iterations per sound and 1000 for each speaker's
+anatomy (363 s on the shared machine, three jobs). How the comparison works:
 [validation-plan.md](validation-plan.md); commands: [tools/tract3d](../../tools/tract3d/README.md).
-Sections 2–8 keep their own dates.*
+Sections 3, 7 and 8 keep their own dates.*
 
 **In short.** The parametric model reproduces the 44 MRI vocal tracts of the
 [Dresden Vocal Tract Dataset](https://doi.org/10.1038/s41597-020-00597-w) (DVTD; two German
-speakers, 22 sounds each) with a median area-function distance d of 0.453 (male) and 0.447
+speakers, 22 sounds each) with a median area-function distance d of 0.445 (male) and 0.376
 (female), below the distance between the two speakers themselves (median 0.73), and with the
-first three resonances of the fitted area functions a median 2.2 % and 1.9 % from the MRI's
+first three resonances of the fitted area functions a median 2.1 % and 2.7 % from the MRI's
 (same 1D solver both sides). Every one of the 44 fits is measured by the voxel pipeline, and
-the fast slicer agrees with the model's own voxels (area within 1.2 % on every sound, channel
-counts equal on a median 99 % and 98 % of cuts). Of the plan's pass lines for a fit, the median
-resonance error (≤ 5 %) and the male identification (20 of 22) now hold; the area-function
-lines (median d ≤ 0.30, every sound ≤ 0.45), the female identification (16 of 22) and "every
-resonance within 10 %" (5 male and 4 female sounds are outside it) are **not met**; the
-reasons are below. The default shapes (the engine's own targets with `derive`) remain far from
-MRI (median d 0.868 / 0.801); closing that is the work of the sound's port, on the targets.
+the fast slicer agrees with the model's own voxels (area within 1.1 % on every sound, channel
+counts equal on a median 99 % of cuts). Where the MRI's lower pharynx splits into separate
+regions, the model's count is now within one on 44 of 47 (male) and 86 of 93 (female) cuts
+(35 of 47 and 45 of 93 before the slice fix). **Not met**: the plan's area-function lines for
+a fit (median d ≤ 0.30, every sound ≤ 0.45), the identification (19 of 22 each against ≥ 20),
+"every resonance within 10 %" (3 male and 4 female sounds are outside it), the lower-pharynx
+line on every cut, the cut-shape measures at the level of the two speakers' own difference
+(cut IoU 0.65 and 0.66 against 0.71; aspect error 0.51 against 0.43), and the default shapes
+(the engine's own targets with `derive`: median d 0.887 / 0.743 against 0.71). The reasons,
+cut by cut and sound by sound, are below.
 
 d is the RMS over 101 points of normalised length of log2(A_model / A_MRI), areas floored at
 0.05 cm² (d = 1 means a factor of two on average). Every number below is this project's
@@ -34,101 +37,148 @@ area nor a channel, as in the fast slicer. The port of the research probe reprod
 output on all 44 meshes (worst per-mesh median area difference 1.71 %, lowest channel agreement
 95.1 %, largest length difference one step, 0.25 cm; plan lines 3 %, 95 %, 0.25 cm).
 
-Each speaker's anatomy (pharynx widths and corner shape, dental arches, palate vault, laryngeal
-tube, piriform fossae, tongue width) is fitted once on /ə aː iː uː s l/; then each sound's 13
-articulators, 11 tongue parameters and the lips' rounding are fitted. The objective is the
-area-function distance, the tract's length, the cuts' proportions at six stations, a penalty for
-openings thinner than 1.5 mm (the reference pipeline traces its centreline on a 1 mm grid; the
-MRI voxels are 1.2 mm), and the distance of F1–F3 from the reference's (weight 0.8 per unit of
-log ratio: a 10 % error of one resonance costs as much as 0.08 of d). A fit whose voxels have
-no connected path from glottis to lips is backed off towards its starting posture until they
-have one; in this run no fit needed it.
+Each speaker's anatomy (the pharyngeal ring's half-widths and outline, dental arches, palate
+vault, the laryngeal tube's size, the epiglottis' curl, the aryepiglottic folds' height, the
+piriform fossae, tongue width: 14 values) is fitted once on /ə aː iː uː s l/; then each
+sound's 13 articulators, 11 tongue parameters, the lips' rounding and the pharynx's squeeze
+are fitted. The objective is the area-function distance, the tract's length, the cuts'
+proportions at six stations, a penalty for openings thinner than 1.5 mm (the reference
+pipeline traces its centreline on a 1 mm grid; the MRI voxels are 1.2 mm), and the distance
+of F1–F3 from the reference's (weight 0.8 per unit of log ratio: a 10 % error of one
+resonance costs as much as 0.08 of d). A fit whose voxels have no connected path from glottis
+to lips is backed off towards its starting posture until they have one; in this run one fit
+(the male /ʃ/) was backed off half-way.
 
 | Test (plan §5) | Line | Male | Female | Result |
 |---|---|---:|---:|---|
-| Fitted d, median of 22 | ≤ 0.30 | 0.453 | 0.447 | fail |
-| Fitted d, worst sound | ≤ 0.45 | 0.903 | 1.158 | fail |
-| Sounds with fitted d ≤ 0.45 | all 22 | 10/22 | 11/22 | fail |
+| Fitted d, median of 22 | ≤ 0.30 | 0.445 | 0.376 | fail |
+| Fitted d, worst sound | ≤ 0.45 | 1.050 | 1.020 | fail |
+| Sounds with fitted d ≤ 0.45 | all 22 | 12/22 | 13/22 | fail |
 | Measured by the voxel pipeline | 22 | 22/22 | 22/22 | pass |
-| Identification (nearest MRI sound is the target) | ≥ 20/22 | 20/22 | 16/22 | male pass, female fail |
-| F1–F3 of fitted vs MRI area function, median absolute error | ≤ 5 % | 2.2 % | 1.9 % | pass |
-| F1–F3, every value | ≤ 10 % | 50 % | 61 % | fail (5 and 4 sounds outside) |
-| Default d (engine targets + derive), median | ≤ 0.71 | 0.868 | 0.801 | fail |
-| Default d per sound ≤ max(1.0, between-speaker d) | all 22 | 16/22 | 16/22 | fail |
-| Fast slicer vs the model's voxels, median area difference (T-consistency) | ≤ 3 % | 0.7 % | 0.8 % | pass |
-| … worst sound | ≤ 3 % | 0.9 % | 1.2 % | pass |
-| … channel count equal, median over sounds (lowest sound) | ≥ 95 % | 99 % (93 %) | 98 % (93 %) | pass |
+| Identification (nearest MRI sound is the target) | ≥ 20/22 | 19/22 | 19/22 | fail |
+| F1–F3 of fitted vs MRI area function, median absolute error | ≤ 5 % | 2.1 % | 2.7 % | pass |
+| F1–F3, every value | ≤ 10 % | 243 % | 53 % | fail (3 and 4 sounds outside) |
+| Lower pharynx: regions within ±1 where MRI splits | every such cut | 44/47 | 86/93 | fail |
+| Cut IoU, median over stations and sounds | ≥ 0.71 (between the two speakers) | 0.65 | 0.66 | fail |
+| Cut aspect error (absolute log2 ratio), median | ≤ 0.43 (between the two speakers) | 0.51 | 0.51 | fail |
+| Default d (engine targets + derive), median | ≤ 0.71 | 0.887 | 0.743 | fail |
+| Default d per sound ≤ max(1.0, between-speaker d) | all 22 | 19/22 | 18/22 | fail |
+| Fast slicer vs the model's voxels, median area difference (T-consistency) | ≤ 3 % | 0.7 % | 0.7 % | pass |
+| … worst sound | ≤ 3 % | 1.0 % | 1.1 % | pass |
+| … channel count equal, median over sounds (lowest sound) | ≥ 95 % | 99 % (93 %) | 99 % (95 %) | pass |
 
-- **male**: fitted length error median 2.0 %, volume error median 12.3 %; F1/F2/F3 median
-  absolute error 2.3 / 2.7 / 1.8 %; lower pharynx (0.5–3 cm above the glottis), where MRI splits
-  into ≥ 2 regions the model's count is within ±1 on 35/47 cuts; cut IoU median 0.66 (between the
-  two speakers 0.71), aspect error (absolute log2 ratio) median 0.47 (between speakers 0.43);
-  headline set median fitted d 0.443, sounds with fitted d ≤ 0.30: 0.
-- **female**: fitted length error median 0.0 %, volume error median 5.7 %; F1/F2/F3 median
-  absolute error 2.0 / 1.4 / 2.1 %; lower pharynx within ±1 on 45/93 cuts; cut IoU median 0.71,
-  aspect error median 0.36; headline set median fitted d 0.514, sounds with fitted d ≤ 0.30: 2.
+- **male**: fitted length error median 2.6 %, volume error median 6.2 %; F1/F2/F3 median
+  absolute error 1.6 / 2.0 / 2.4 %; headline set median fitted d 0.429, sounds with fitted
+  d ≤ 0.30: 1.
+- **female**: fitted length error median 1.6 %, volume error median 3.6 %; F1/F2/F3 median
+  absolute error 2.0 / 2.4 / 3.2 %; headline set median fitted d 0.466, sounds with fitted
+  d ≤ 0.30: 5.
 
-### What changed since the reviewed head, and what it bought
+**One run is one sample.** The fit searches 26 values per sound and 14 per speaker (Nelder–Mead
+with restarts) and ends in different places. Six runs of the command were made while the
+geometry changed in this stage; over the last three, whose geometry differed only in details
+(where the lips' rounding begins, their corner exponent, the cheeks, default values), the
+medians ranged: fitted d
+0.43–0.45 (male) and 0.34–0.42 (female); cut IoU 0.65–0.67 and 0.66–0.68; aspect error
+0.44–0.51 and 0.40–0.52; lower pharynx 44–45 of 47 and 86–89 of 93; default d 0.88–0.91 and
+0.74–0.80. Differences of that size between two runs are the search; the table is the last
+run on the final geometry.
 
-The review of the previous head (commit e8687b1, the same command) found: one male fit (/ʃ/)
-without a connected voxel path (21 of 22 measured), the female channel agreement at 92 % against
-the 95 % line, identification 18 and 16 of 22 where 18 and 18 were published, and the fitted
-rounded vowels' F1 a third too high. Three runs of the same command tell the changes apart
-(the evidence folder keeps all three tables):
+### What the slice fix changed, and what it bought
 
-| | Reviewed head | + perimeter, region rule, connected fits, `lipRound` | + the resonance term (this document) |
-|---|---|---|---|
-| Measured, male / female | 21 / 22 | 22 / 22 | 22 / 22 |
-| Fitted d, median | 0.420 / 0.438 | 0.407 / 0.424 | 0.453 / 0.447 |
-| Identified | 18 / 16 | 19 / 18 | 20 / 16 |
-| F1 error, median absolute | 9.9 / 9.1 % | 8.3 / 6.3 % | 2.3 / 2.0 % |
-| F1–F3 error, median absolute | 6.3 / 4.1 % | 5.5 / 4.2 % | 2.2 / 1.9 % |
-| Sounds with a resonance over 10 % off | 10 / 10 | 11 / 8 | 5 / 4 |
-| Channel agreement, median | 96 / 92 % | 97 / 98 % | 99 / 98 % |
+The slice-critic judged the integrated head (commit d5241e0) from its own frames: cuts of the
+pharynx and larynx that were blocky polygons of the same shape in every sound, no epiglottis
+in the lumen, a pharynx 3.0 cm wide in every posture, default shapes far from MRI. The
+geometry that answers it is model-design.md §0.3. The same command on both:
 
-- **Channel agreement** rose because the two pipelines now use one rule: the voxel pipeline
-  counted every speck that touched the band as a channel, the slicer dropped regions under
-  0.01 cm². (The perimeter's fix changes the limit on thin openings only for round shapes, which
-  were never near it.)
-- **`lipRound`** lets a fit narrow the lips' opening below the engine's 1.1 cm floor. Alone it
-  brought the male /u/ from d 0.891 to 0.553, and its F1 from +33 % to +24 %.
-- **The resonance term.** The area distance weighs every centimetre of the tract alike, while
-  F1 of a rounded vowel hangs on the lips' few millimetres and the cavity behind them. With the
-  term, the rounded vowels' F1 comes to within the 10 % line for 12 of the 16 cases below, at a
-  cost in d (median +0.05 / +0.02) and in the female identification (18 → 16): the fit trades
-  shape for resonance where it cannot have both. Ruled out: half the weight (F1 5.6 / 4.0 %,
-  male /u/ still +18 %) and bringing the term in round by round (male /u/ +25 %).
+| | Integrated head | After the slice fix |
+|---|---|---|
+| Fitted d, median (male / female) | 0.453 / 0.447 | 0.445 / 0.376 |
+| Sounds with fitted d ≤ 0.45 | 10 / 11 | 12 / 13 |
+| Identified | 20 / 16 | 19 / 19 |
+| Sounds with a resonance over 10 % off | 5 / 4 | 3 / 4 |
+| Lower pharynx: regions within ±1 where MRI splits | 35/47, 45/93 | 44/47, 86/93 |
+| Cut IoU, median | 0.66 / 0.71 | 0.65 / 0.66 |
+| Cut aspect error, median | 0.47 / 0.36 | 0.51 / 0.51 |
+| Default d, median | 0.868 / 0.801 | 0.887 / 0.743 |
+| Channel agreement with the model's voxels, median | 99 / 98 % | 99 / 99 % |
 
-| Case | IPA | F1 error: reviewed head | with `lipRound` | with `lipRound` and the resonance term | Fitted d: reviewed head → now |
-|---|---|---:|---:|---:|---|
-| s1-04-boote-tense-o | /o/ | +14 % | +19 % | +9 % | 0.470 → 0.504 |
-| s1-05-bude-tense-u | /u/ | +33 % | +24 % | +2 % | 0.891 → 0.784 |
-| s1-07-hoehle-tense-oe | /ø/ | +23 % | +18 % | +7 % | 0.450 → 0.514 |
-| s1-08-guete-tense-y | /y/ | +35 % | +33 % | +17 % | 0.670 → 0.738 |
-| s1-18-offen-lax-o | /ɔ/ | +6 % | +6 % | +1 % | 0.331 → 0.378 |
-| s1-19-butter-lax-u | /ʊ/ | +28 % | +19 % | +14 % | 0.580 → 0.631 |
-| s1-20-muetter-lax-y | /ʏ/ | +10 % | +8 % | +3 % | 0.347 → 0.376 |
-| s1-21-goetter-lax-oe | /œ/ | +7 % | +4 % | +3 % | 0.333 → 0.415 |
-| s2-04-boote-tense-o | /o/ | +13 % | +14 % | +1 % | 0.578 → 0.569 |
-| s2-05-bude-tense-u | /u/ | +14 % | +15 % | +0 % | 0.443 → 0.427 |
-| s2-07-hoehle-tense-oe | /ø/ | +2 % | +1 % | +0 % | 0.352 → 0.382 |
-| s2-08-guete-tense-y | /y/ | +7 % | +3 % | −0 % | 0.357 → 0.358 |
-| s2-18-offen-lax-o | /ɔ/ | +28 % | +28 % | +11 % | 0.554 → 0.550 |
-| s2-19-butter-lax-u | /ʊ/ | +15 % | +19 % | +13 % | 0.394 → 0.512 |
-| s2-20-muetter-lax-y | /ʏ/ | +1 % | +0 % | +1 % | 0.291 → 0.274 |
-| s2-21-goetter-lax-oe | /œ/ | +6 % | +6 % | +1 % | 0.432 → 0.382 |
+- **The lower pharynx's channels.** The fossae are pouches beside the laryngeal tube with the
+  aryepiglottic folds between; how high the folds stand is fitted per speaker (0.58 cm for
+  the male, 0.35 cm for the female). The nine sounds that still miss do so on one or two
+  cuts: three male sounds on one cut each 2.5–2.75 cm above the glottis (the MRI has three
+  regions where the model has already merged into one or, once, has five), and six female
+  sounds where the MRI's fossae begin one cut lower than the model's (0.75 cm above the
+  glottis; the fit ended with the fossae 1.0 cm deep, their bound).
+- **The pharynx's cuts.** At the stations in the pharynx (0.3 and 0.45 of the tract's length)
+  the male model's cuts are as close to the speaker as the other speaker's are, or closer
+  (cut IoU 0.68 and 0.78 against 0.65 between the speakers; aspect error 0.52 and 0.23
+  against 0.58 and 0.71). The female model's are as close at 0.3 (IoU 0.65, aspect error
+  0.43) and less close at 0.45 (IoU 0.55; aspect error 0.70 against 0.71).
+- **Where the cut shape lost.** At 0.15 of the length (the hypopharynx's floor) the male
+  model's cut is 2.2 times too wide for its depth (aspect error 1.14 against 0.33 between
+  the speakers; IoU 0.49 against 0.72; female 0.63 and 0.65): the laryngeal tube's rim is as
+  wide as the engine's area asks in the room the engine's larynx leaves front to back, and
+  the fossae stand beyond it, so the three channels spread further sideways than the MRI's.
+  At 0.9 (the teeth and lips) IoU is 0.55 and 0.58 against 0.74: the tooth rows are blocks
+  with flat faces and the incisors' rows rise in steps beside the midline (critique, below).
+  The pharynx's lumen also ends sideways in thin tips where the ring meets the tongue or the
+  epiglottis at a shallow angle; a smoothed segmentation has no such tips, and they widen
+  the model's cuts (0.6 of the length: aspect error 0.58 and 0.62 against 0.41).
+- **Ruled out for the tips:** a squarer ring (an outline exponent of 3 and more, so the walls
+  turn forward later and meet the tongue more steeply), as a seventh run: male cut IoU 0.61
+  and aspect error 0.55, female 0.67 and 0.41, lower pharynx 43/47 and 82/93. No gain beyond
+  the search's own spread, and the male's cuts lost; the exponent's range stays 2 to 4.
+- **The female fit** gained most (median d 0.447 → 0.376, five sounds under 0.30, three more
+  identified): her pharynx is narrow for its depth and her three lower channels lie where the
+  model's now are.
+- **The defaults** did not come nearer the line (next section).
 
-**Still outside the 10 % line**, with what the run's own files show of each:
+### The default shapes, sound by sound
 
-- the male /y/ (+17 %) and both speakers' /ʊ/ (+14 %, +13 %): the fitted pharynx is narrower
-  than the MRI's (its mean area 0.65, 0.77 and 0.79 of the MRI's), so the cavity behind the lips
-  is too small for the F1. The anatomy's pharynx width is shared by all of a speaker's sounds.
-- both /f/ (−50 %, −61 %): the fitted area function ends in a closure (its last cuts hold no
-  air), where the MRI has an opening beside the teeth.
-- the male /ʃ/ (+30 %): the fitted channel is 2.9 times the MRI's at its narrowest (the 1.5 mm
-  limit); the male /s/ (−11 %): one fitted cut is under 0.01 cm², so it counts as shut.
-- the female /s/ (+16 %) and /ɔ/ (+11 %): not explained (their narrowest cuts are within a
-  quarter of the MRI's, and the /ɔ/'s pharynx within 3 %).
+The default posture of a sound is the engine's own target for the nearest symbol with
+`derive`'s 3D shape and the speaker's fitted anatomy. The per-sound table gives, for each, the
+default model's area against the MRI's over four stretches of the tract (geometric mean of the
+ratio: larynx to 0.2 of the length, pharynx to 0.55, mouth to 0.9, lips). What it shows:
+
+- **Open and mid front vowels** (/a/, /ɛ/, /e/): the pharynx is 1.2 to 2.2 times the MRI's
+  (the male /ɛ/ the most), the mouth 1.7 to 2.1 times for /e/ and the female /i/. The engine's
+  targets for these keep a deeper pharynx than either speaker has.
+- **Back rounded vowels** (/o/, /ɔ/): the pharynx is a quarter to two fifths of the MRI's for
+  the male /o/ and /ɔ/ and the female /ɔ/ (default d 1.41, 1.53, 1.20, the three vowels over
+  their line). The engine's targets draw the tongue's root far back for them, and `derive`
+  draws the side walls in on top of that.
+- **Close rounded vowels of the male speaker** (/u/, /y/, /ʊ/, /ø/): nearly every stretch is
+  0.4 to 0.9 of the MRI's: his rounded vowels are larger than the engine's almost everywhere.
+- **/x/**: the pharynx 2.7 to 3.4 times the MRI's and the mouth a third to two fifths of it (default d
+  1.56 and 1.31, over the line for both speakers): the engine's velar closure is tighter
+  and further forward than the sustained /x/ of either speaker.
+- **/ç/, /ʃ/, /s/, /f/**: the mouth 0.4 to 0.5 of the MRI's for /ç/ and 2.6 to 2.8 times for
+  /ʃ/; the lips 2.5 to 3 times for /s/ and a fifth to a quarter for /f/ (the engine's
+  labiodental closure against the MRI's opening beside the teeth). The female /s/ and /ç/
+  are over their line (1.10 and 1.19).
+
+`derive`'s ten constants were fitted to the median default d over all 44 sounds (the fast
+slicer, the fitted anatomies of an earlier run): it moved from 0.823 to 0.783, with most
+constants at their bounds; fitting only the two new ones (the lips' rounding and the pharynx's
+squeeze) gave 0.787 with the squeeze at 1.17 and the rounding at 0.21. The values in the code
+are a rounding of 1.0 and a squeeze of 0.9, and the eight older constants as they were. The
+rounding stays at 1.0 because the fitted tense rounded vowels of both speakers end between
+0.76 and 1.0 (the female's lax ones between 0.06 and 0.47; the area distance alone prefers a
+wide slit at the lips, the resonances do not); the squeeze is between what the fitted open
+vowels and /x/ use (0.5 to 0.9) and what the median asks for.
+What keeps the defaults from the line is the engine's midline targets, calibrated to formants
+through its 1D area law without any geometric reference; they move when the sound is computed
+from this geometry.
+
+**Still outside the 10 % resonance line**, with what the run's own files show of each:
+
+- both /f/ (+243 % and −53 % on F1): the fitted area function ends in a closure (its last cuts
+  hold no air) where the MRI has an opening beside the teeth; the male fit's lowest resonance
+  is missing from its curve, so the first peak found is the next one.
+- both /ʃ/ (+91 % and +20 %): the fitted channels are 5.2 and 1.4 times the MRI's at their
+  narrowest (the 1.5 mm limit; the male fit was backed off half-way to keep a connected path).
+- the male /y/ (F3 +10 %), the female /ɔ/ (F1 +14 %) and /ʊ/ (F3 −13 %): not explained.
 
 The first build, for comparison (its run of the same pipeline, 2026-11-09): fitted d 0.683 /
 0.732, identification 17 / 14 of 22, F1–F3 error 12.4 % / 7.7 %, slicer area error 5.9 % /
@@ -144,52 +194,52 @@ not use this geometry yet. The constriction column is the model's narrowest cut 
 MRI's: how far along the tract it lies from the MRI's (as a share of the length), how many times
 its area, and its channel count against the MRI's. The table is `table.md` of the run, as written.
 
-| Case | IPA | Default d | Fitted d | Between speakers (scaled) | Nearest reference | F1/F2/F3 error % (fitted) | Constriction, model against MRI: place (Δ s/L), area (×), channels | Mean cut IoU |
-|---|---|---:|---:|---:|---|---|---|---:|
-| s1-01-bahn-tense-a | a | 1.161 | 0.392 | 0.64 | itself | 0 / 4 / 5 | +0.02, ×1.43, equal | 0.52 |
-| s1-02-beet-tense-e | e | 0.797 | 0.328 | 0.47 | itself | -0 / 1 / 1 | -0.03, ×1.15, equal | 0.57 |
-| s1-03-tiere-tense-i | i | 0.706 | 0.406 | 0.47 | itself | 0 / 2 / 2 | +0.01, ×1.16, equal | 0.62 |
-| s1-04-boote-tense-o | o | 0.885 | 0.504 | 0.78 | itself | 9 / 3 / 3 | -0.38, ×0.62, equal | 0.69 |
-| s1-05-bude-tense-u | u | 1.026 | 0.784 | 0.93 | itself | 2 / 9 / 0 | +0.03, ×0.51, equal | 0.65 |
-| s1-06-laehmung-tense-ae | ɛ | 0.791 | 0.450 | 0.64 | itself | 1 / 0 / -0 | -0.01, ×1.25, equal | 0.60 |
-| s1-07-hoehle-tense-oe | ø | 0.725 | 0.514 | 0.71 | itself | 7 / 5 / 10 | +0.04, ×0.78, equal | 0.68 |
-| s1-08-guete-tense-y | y | 1.199 | 0.738 | 0.77 | itself | 17 / 4 / 4 | -0.25, ×1.51, equal | 0.66 |
-| s1-09-los-l | l | 0.832 | 0.455 | 0.73 | itself | 3 / 4 / 2 | +0.01, ×0.51, -1 | 0.57 |
-| s1-10-fahrt-f | f | 1.196 | 0.903 | 0.82 | itself | -50 / -22 / -2 | +0.03, ×0.00, -2 | 0.73 |
-| s1-11-bass-s | s | 0.947 | 0.432 | 0.73 | itself | -11 / 3 / 1 | -0.01, ×0.00, -1 | 0.60 |
-| s1-12-schoen-sh | ʃ | 1.399 | 0.514 | 1.45 | itself | 30 / 3 / 3 | +0.03, ×2.90, +2 | 0.67 |
-| s1-13-ich-c | ç | 0.927 | 0.359 | 0.91 | itself | 2 / 2 / 4 | +0.00, ×1.24, equal | 0.60 |
-| s1-14-ach-x | x | 1.490 | 0.496 | 0.56 | s1-01-bahn-tense-a | -9 / -1 / 3 | -0.03, ×1.12, equal | 0.60 |
-| s1-15-bass-lax-a | a | 1.176 | 0.440 | 0.49 | itself | -2 / 4 / 2 | +0.02, ×1.48, equal | 0.50 |
-| s1-16-bett-lax-ae | ɛ | 0.852 | 0.458 | 0.56 | itself | 1 / 1 / 2 | +0.03, ×1.46, equal | 0.63 |
-| s1-17-mit-lax-i | ɪ | 0.750 | 0.456 | 0.77 | itself | 1 / 0 / -0 | -0.04, ×0.80, equal | 0.65 |
-| s1-18-offen-lax-o | ɔ | 0.555 | 0.378 | 0.97 | itself | 1 / 1 / 1 | -0.39, ×0.87, equal | 0.59 |
-| s1-19-butter-lax-u | ʊ | 0.971 | 0.631 | 0.83 | s1-04-boote-tense-o | 14 / 4 / 0 | +0.04, ×0.68, equal | 0.67 |
-| s1-20-muetter-lax-y | ʏ | 0.525 | 0.376 | 0.49 | itself | 3 / 2 / 1 | +0.04, ×0.93, equal | 0.74 |
-| s1-21-goetter-lax-oe | œ | 0.544 | 0.415 | 0.63 | itself | 3 / 2 / 3 | +0.03, ×0.74, equal | 0.67 |
-| s1-22-ehe-schwa | ə | 0.725 | 0.322 | 0.90 | itself | -1 / 0 / -0 | +0.03, ×0.83, equal | 0.66 |
-| s2-01-bahn-tense-a | a | 1.018 | 0.569 | 0.64 | s2-15-bass-lax-a | -7 / 2 / -0 | +0.33, ×1.73, -2 | 0.58 |
-| s2-02-beet-tense-e | e | 0.810 | 0.342 | 0.47 | itself | -1 / 1 / 1 | -0.04, ×1.23, equal | 0.63 |
-| s2-03-tiere-tense-i | i | 0.828 | 0.301 | 0.47 | itself | -1 / -4 / -2 | -0.09, ×0.95, equal | 0.65 |
-| s2-04-boote-tense-o | o | 0.651 | 0.569 | 0.78 | itself | 1 / -1 / -10 | +0.10, ×0.64, -1 | 0.72 |
-| s2-05-bude-tense-u | u | 0.666 | 0.427 | 0.93 | itself | 0 / -0 / -4 | -0.42, ×0.73, -2 | 0.69 |
-| s2-06-laehmung-tense-ae | ɛ | 0.563 | 0.543 | 0.64 | s2-16-bett-lax-ae | -2 / 1 / 4 | +0.02, ×3.18, equal | 0.73 |
-| s2-07-hoehle-tense-oe | ø | 0.650 | 0.382 | 0.71 | itself | 0 / 1 / 5 | +0.97, ×1.53, equal | 0.76 |
-| s2-08-guete-tense-y | y | 0.792 | 0.358 | 0.77 | itself | -0 / 0 / 3 | +0.03, ×1.79, equal | 0.72 |
-| s2-09-los-l | l | 0.729 | 0.327 | 0.73 | itself | -3 / 2 / 2 | +0.01, ×0.13, equal | 0.60 |
-| s2-10-fahrt-f | f | 1.330 | 1.158 | 0.82 | s2-08-guete-tense-y | -61 / -21 / 5 | +0.93, ×0.00, -1 | 0.72 |
-| s2-11-bass-s | s | 1.005 | 0.560 | 0.73 | itself | 16 / 2 / 2 | -0.02, ×0.98, +3 | 0.60 |
-| s2-12-schoen-sh | ʃ | 1.347 | 0.922 | 1.43 | s2-08-guete-tense-y | 9 / 2 / 1 | -0.03, ×0.21, +1 | 0.64 |
-| s2-13-ich-c | ç | 1.032 | 0.330 | 0.91 | itself | -0 / 1 / -0 | +0.02, ×0.77, equal | 0.68 |
-| s2-14-ach-x | x | 1.261 | 0.529 | 0.56 | itself | -8 / -1 / 0 | +0.50, ×1.80, -1 | 0.66 |
-| s2-15-bass-lax-a | a | 1.062 | 0.467 | 0.49 | itself | -7 / 1 / -4 | +0.31, ×1.15, -1 | 0.61 |
-| s2-16-bett-lax-ae | ɛ | 0.407 | 0.305 | 0.56 | itself | 3 / 3 / 4 | +0.00, ×2.40, equal | 0.70 |
-| s2-17-mit-lax-i | ɪ | 0.442 | 0.233 | 0.77 | itself | 2 / 5 / 1 | +0.00, ×1.57, -1 | 0.70 |
-| s2-18-offen-lax-o | ɔ | 0.831 | 0.550 | 0.97 | itself | 11 / 3 / -5 | -0.02, ×1.24, equal | 0.68 |
-| s2-19-butter-lax-u | ʊ | 0.961 | 0.512 | 0.83 | itself | 13 / 5 / -12 | +0.08, ×0.81, -1 | 0.72 |
-| s2-20-muetter-lax-y | ʏ | 0.416 | 0.274 | 0.49 | itself | 1 / 1 / 0 | +0.02, ×1.87, equal | 0.77 |
-| s2-21-goetter-lax-oe | œ | 0.515 | 0.382 | 0.63 | s2-16-bett-lax-ae | 1 / 2 / 1 | +0.00, ×2.20, equal | 0.77 |
-| s2-22-ehe-schwa | ə | 0.623 | 0.499 | 0.90 | s2-16-bett-lax-ae | 0 / 0 / 1 | -0.02, ×4.29, equal | 0.66 |
+| Case | IPA | Default d | Default area against MRI by stretch: larynx / pharynx / mouth / lips (×) | Fitted d | Between speakers (scaled) | Nearest reference | F1/F2/F3 error % (fitted) | Constriction, model against MRI: place (Δ s/L), area (×), channels | Mean cut IoU |
+|---|---|---:|---|---:|---:|---|---|---|---:|
+| s1-01-bahn-tense-a | a | 0.704 | 1.16 / 1.69 / 1.32 / 1.56 | 0.411 | 0.64 | itself | -0 / 3 / 1 | -0.14, ×1.46, equal | 0.59 |
+| s1-02-beet-tense-e | e | 0.704 | 0.99 / 1.31 / 1.70 / 1.28 | 0.313 | 0.47 | itself | -2 / 2 / -0 | -0.03, ×0.96, equal | 0.61 |
+| s1-03-tiere-tense-i | i | 0.626 | 0.72 / 0.76 / 0.70 / 0.82 | 0.305 | 0.47 | itself | -2 / 2 / -1 | +0.02, ×1.35, equal | 0.61 |
+| s1-04-boote-tense-o | o | 1.413 | 0.58 / 0.29 / 0.85 / 0.67 | 0.528 | 0.78 | itself | 5 / 9 / 6 | +0.04, ×0.56, equal | 0.71 |
+| s1-05-bude-tense-u | u | 1.001 | 0.68 / 0.62 / 0.61 / 0.67 | 0.714 | 0.93 | itself | -2 / 1 / 4 | +0.03, ×0.51, equal | 0.58 |
+| s1-06-laehmung-tense-ae | ɛ | 0.849 | 1.61 / 1.92 / 1.65 / 1.16 | 0.444 | 0.64 | itself | 0 / 1 / -1 | -0.01, ×2.14, +2 | 0.60 |
+| s1-07-hoehle-tense-oe | ø | 0.690 | 0.79 / 0.75 / 0.65 / 0.71 | 0.484 | 0.71 | itself | 1 / 2 / 10 | +0.02, ×1.29, equal | 0.67 |
+| s1-08-guete-tense-y | y | 1.133 | 0.56 / 0.62 / 0.42 / 1.10 | 0.674 | 0.77 | itself | 1 / 2 / 10 | +0.04, ×1.38, equal | 0.66 |
+| s1-09-los-l | l | 0.704 | 0.72 / 0.67 / 1.00 / 1.08 | 0.356 | 0.73 | itself | 2 / 9 / 2 | +0.01, ×1.03, -1 | 0.54 |
+| s1-10-fahrt-f | f | 1.194 | 1.06 / 0.83 / 0.94 / 0.18 | 1.050 | 0.82 | s1-20-muetter-lax-y | 243 / 45 / 39 | +0.01, ×0.00, -2 | 0.71 |
+| s1-11-bass-s | s | 0.936 | 1.08 / 0.90 / 0.95 / 2.95 | 0.457 | 0.73 | itself | -0 / 7 / 2 | -0.01, ×0.41, +1 | 0.57 |
+| s1-12-schoen-sh | ʃ | 1.347 | 1.05 / 0.68 / 2.80 / 0.39 | 0.935 | 1.45 | s1-22-ehe-schwa | 91 / -8 / -2 | +0.02, ×5.20, +1 | 0.58 |
+| s1-13-ich-c | ç | 1.004 | 1.10 / 1.07 / 0.54 / 0.80 | 0.343 | 0.91 | itself | -2 / 2 / 2 | +0.01, ×1.18, equal | 0.62 |
+| s1-14-ach-x | x | 1.558 | 1.78 / 3.41 / 0.32 / 0.57 | 0.447 | 0.56 | itself | 1 / 2 / 3 | -0.01, ×0.93, equal | 0.59 |
+| s1-15-bass-lax-a | a | 0.732 | 1.48 / 1.83 / 0.93 / 1.50 | 0.554 | 0.49 | itself | 0 / 1 / 3 | -0.13, ×1.23, equal | 0.54 |
+| s1-16-bett-lax-ae | ɛ | 0.926 | 1.59 / 2.15 / 1.53 / 1.24 | 0.422 | 0.56 | itself | -0 / 0 / -4 | +0.59, ×2.23, equal | 0.66 |
+| s1-17-mit-lax-i | ɪ | 0.810 | 0.82 / 1.32 / 0.65 / 0.88 | 0.416 | 0.77 | itself | -0 / 0 / 2 | -0.06, ×0.88, equal | 0.62 |
+| s1-18-offen-lax-o | ɔ | 1.528 | 0.61 / 0.25 / 0.55 / 1.16 | 0.470 | 0.97 | itself | 3 / 4 / 2 | +0.01, ×1.08, equal | 0.63 |
+| s1-19-butter-lax-u | ʊ | 1.058 | 0.53 / 0.87 / 0.43 / 0.59 | 0.671 | 0.83 | s1-04-boote-tense-o | 5 / 9 / 5 | +0.06, ×0.58, equal | 0.65 |
+| s1-20-muetter-lax-y | ʏ | 0.488 | 0.85 / 0.94 / 0.82 / 1.40 | 0.410 | 0.49 | itself | 1 / 2 / 2 | +0.04, ×0.81, equal | 0.67 |
+| s1-21-goetter-lax-oe | œ | 0.590 | 0.89 / 1.24 / 0.74 / 0.77 | 0.398 | 0.63 | itself | 2 / 2 / 4 | +0.97, ×0.99, equal | 0.67 |
+| s1-22-ehe-schwa | ə | 0.652 | 1.24 / 1.10 / 1.65 / 1.06 | 0.253 | 0.90 | itself | 2 / 2 / -0 | +0.64, ×1.33, equal | 0.51 |
+| s2-01-bahn-tense-a | a | 0.519 | 1.10 / 1.25 / 1.01 / 1.01 | 0.455 | 0.64 | s2-15-bass-lax-a | 1 / 2 / -1 | +0.00, ×1.76, -2 | 0.47 |
+| s2-02-beet-tense-e | e | 0.806 | 1.05 / 1.21 / 1.96 / 1.67 | 0.306 | 0.47 | itself | -2 / 2 / 1 | -0.04, ×1.14, equal | 0.64 |
+| s2-03-tiere-tense-i | i | 0.773 | 1.17 / 1.12 / 2.06 / 1.56 | 0.246 | 0.47 | itself | -2 / 1 / 3 | -0.07, ×0.97, equal | 0.69 |
+| s2-04-boote-tense-o | o | 0.701 | 0.77 / 1.21 / 0.86 / 0.63 | 0.551 | 0.78 | itself | 4 / 4 / -6 | +0.10, ×0.88, -1 | 0.68 |
+| s2-05-bude-tense-u | u | 0.687 | 0.81 / 1.09 / 0.66 / 0.70 | 0.394 | 0.93 | itself | 2 / 4 / 0 | -0.41, ×0.93, -2 | 0.63 |
+| s2-06-laehmung-tense-ae | ɛ | 0.621 | 1.57 / 1.51 / 1.08 / 0.85 | 0.404 | 0.64 | s2-16-bett-lax-ae | 0 / 3 / 5 | +0.04, ×2.76, +2 | 0.62 |
+| s2-07-hoehle-tense-oe | ø | 0.713 | 1.16 / 1.27 / 0.58 / 1.22 | 0.318 | 0.71 | itself | 2 / 0 / 2 | +0.97, ×1.16, equal | 0.71 |
+| s2-08-guete-tense-y | y | 0.797 | 1.09 / 1.02 / 0.47 / 1.41 | 0.297 | 0.77 | itself | 1 / -1 / 2 | +0.03, ×1.72, equal | 0.68 |
+| s2-09-los-l | l | 0.816 | 0.94 / 0.95 / 0.83 / 1.77 | 0.519 | 0.73 | itself | 5 / 3 / 7 | -0.02, ×1.62, equal | 0.55 |
+| s2-10-fahrt-f | f | 1.406 | 1.22 / 2.52 / 1.89 / 0.27 | 1.020 | 0.82 | itself | -53 / -23 / -4 | +0.93, ×0.00, -1 | 0.63 |
+| s2-11-bass-s | s | 1.096 | 1.28 / 1.56 / 0.94 / 2.47 | 0.480 | 0.73 | itself | 7 / 2 / 8 | -0.02, ×1.14, equal | 0.59 |
+| s2-12-schoen-sh | ʃ | 1.376 | 1.45 / 1.85 / 2.59 / 1.16 | 0.687 | 1.43 | itself | 20 / 3 / 4 | -0.02, ×1.42, +1 | 0.62 |
+| s2-13-ich-c | ç | 1.188 | 1.17 / 1.59 / 0.42 / 1.45 | 0.343 | 0.91 | itself | -1 / 1 / -0 | +0.00, ×0.54, equal | 0.64 |
+| s2-14-ach-x | x | 1.307 | 1.50 / 2.72 / 0.43 / 0.79 | 0.357 | 0.56 | itself | 4 / 5 / 5 | +0.02, ×1.60, -1 | 0.54 |
+| s2-15-bass-lax-a | a | 0.433 | 1.06 / 1.47 / 0.93 / 1.22 | 0.327 | 0.49 | itself | 1 / 5 / 5 | +0.31, ×1.16, -1 | 0.49 |
+| s2-16-bett-lax-ae | ɛ | 0.479 | 1.00 / 1.44 / 1.15 / 1.34 | 0.229 | 0.56 | itself | 3 / 3 / 3 | +0.00, ×2.20, equal | 0.64 |
+| s2-17-mit-lax-i | ɪ | 0.463 | 0.81 / 1.10 / 0.81 / 0.83 | 0.279 | 0.77 | itself | 1 / 2 / 1 | +0.00, ×1.36, -1 | 0.67 |
+| s2-18-offen-lax-o | ɔ | 1.203 | 0.44 / 0.40 / 0.58 / 0.61 | 0.636 | 0.97 | itself | 14 / 3 / 5 | +0.01, ×0.89, equal | 0.59 |
+| s2-19-butter-lax-u | ʊ | 1.061 | 0.78 / 1.52 / 0.58 / 0.27 | 0.518 | 0.83 | itself | 7 / 2 / -13 | +0.08, ×0.88, -1 | 0.69 |
+| s2-20-muetter-lax-y | ʏ | 0.386 | 1.11 / 1.04 / 1.22 / 1.26 | 0.236 | 0.49 | itself | 1 / 3 / 3 | +0.02, ×1.58, equal | 0.71 |
+| s2-21-goetter-lax-oe | œ | 0.545 | 0.97 / 1.48 / 0.94 / 0.60 | 0.329 | 0.63 | itself | 2 / 2 / 3 | +0.00, ×1.98, equal | 0.67 |
+| s2-22-ehe-schwa | ə | 0.702 | 1.26 / 1.86 / 0.98 / 1.34 | 0.476 | 0.90 | s2-16-bett-lax-ae | 1 / 0 / 1 | -0.02, ×3.63, equal | 0.65 |
 
 
 ## 2. The tongue shapes and the side cavities (T-features, T-anatomy)
@@ -200,38 +250,41 @@ in `cargo test` (`the_presets_make_the_tongue_shapes_the_research_lists`).
 | Preset | Feature | Measured | Line | Result |
 |---|---|---|---|---|
 | flat | no concavity along the tongue | largest surface concavity 0.000 cm | ≤ 0.05 cm | pass |
-| ə | piriform fossa volume | 2.63 cm³ each | 2.1–2.9 cm³ (male; scaled by size³) [R12] | pass |
-| ə | piriform fossa depth | 1.75 cm | 1.6–2.0 cm (male; scaled by size) [R12] | pass |
-| ə | valleculae off the midline only | pocket outline points at z = 0: 0, at z = 0.5 cm: 48 | absent at z = 0, present at 0.5 cm | pass |
-| s | narrow single channel | 0.114 cm², 1 channel(s) at s/L 0.90 | ≤ 0.20 cm², 1 channel, s/L 0.85–0.95 (encloses both DVTD speakers' /s/) | pass |
+| ə | piriform fossa volume | 1.27 cm³ each | 1.0–1.4 cm³ each (male; scaled by size³) [R12] | pass |
+| ə | piriform fossa depth | 1.79 cm | 1.6–2.0 cm (male; scaled by size) [R12] | pass |
+| ə | valleculae beside the median fold | 0.80 cm deep at z = 0.5 cm, 0.36 cm over the fold | ≥ 0.5 cm (scaled by size) beside the fold, the fold at most 60 % of that | pass |
+| s | narrow single channel | 0.115 cm², 1 channel(s) at s/L 0.90 | ≤ 0.20 cm², 1 channel, s/L 0.85–0.95 (encloses both DVTD speakers' /s/) | pass |
 | s | grooved (concave) tongue behind the channel | groove index 0.54 cm | > 0 (concave lower outline) | pass |
-| ʃ | constriction behind /s/ | 0.026 cm² at s/L 0.78 (/s/ at 0.90) | ≤ 0.15 cm², further back than /s/ (as in both DVTD speakers) | pass |
+| ʃ | constriction behind /s/ | 0.062 cm² at s/L 0.77 (/s/ at 0.90) | ≤ 0.15 cm², further back than /s/ (as in both DVTD speakers) | pass |
 | ʃ | long thin channel behind it | 6 cuts within 2.5 cm behind, under 0.6 cm high | ≥ 4 (≥ 1 cm of thin channel) | pass |
 | ʃ | domed blade without a groove | largest surface concavity 0.00 cm over the blade | ≤ 0.05 cm | pass |
 | l | two lateral channels at the tip contact | 2 channels at s/L 0.81, 2.00 cm apart | 2 channels, 2.0–2.8 cm apart (encloses both DVTD speakers' /l/) | pass |
 | l | channel areas follow sideAsym | right/left 0.43/0.40 cm² with sideAsym +0.15 | right > left when sideAsym > 0 | pass |
 | funnel | groove narrows and deepens towards the tip | t 0.60: 1.26 wide, 0.24 deep; t 0.75: 0.99 wide, 0.28 deep; t 0.90: 0.74 wide, 0.34 deep | width falls and depth rises from t 0.6 to 0.9 | pass |
 | cupped | margins raised above the midline | surface rise 0.40 cm | > 0.1 cm | pass |
-| bunched | pharyngeal and palatal constrictions | 2.46 cm² at s/L 0.26, 0.45 cm² at s/L 0.62; 4.43 cm² between | both below 60 % of the area between them | pass |
-| bunched | open along its whole length | narrowest cut 0.45 cm², 0 cut(s) without air | every cut ≥ 0.15 cm² (an approximant, no closure) | pass |
-| bunched | large front cavity | 14.6 cm³ in front of the palatal constriction | ≥ 10 cm³ | pass |
+| bunched | pharyngeal and palatal constrictions | 1.29 cm² at s/L 0.25, 0.39 cm² at s/L 0.58; 2.25 cm² between | both below 60 % of the area between them | pass |
+| bunched | open along its whole length | narrowest cut 0.39 cm², 0 cut(s) without air | every cut ≥ 0.15 cm² (an approximant, no closure) | pass |
+| bunched | large front cavity | 14.0 cm³ in front of the palatal constriction | ≥ 10 cm³ | pass |
 | bunched | tip low | tip 0.95 cm below the upper incisors' edge | ≥ 0.2 cm below | pass |
 | retroflex | air under the raised tip (sublingual) | 3.83 cm of air below the tip in the midsagittal plane | ≥ 0.3 cm | pass |
 | retroflex | palatal constriction at the curled tip | 0.61 cm² at s/L 0.79 | ≤ 0.8 cm² at s/L 0.7–0.92 | pass |
 
 The presets are demonstration postures, tuned with `chimera tract3d tune` until their checks pass;
 none is fitted to MRI (the /ʃ/ preset's channel is tighter than either speaker's). The bunched
-/ɹ/ is open along its whole length since the review (its narrowest cut 0.45 cm², where the
-reviewed preset had nine cuts without air), and the check refuses a closure. The female and
-child presets pass 17 and 16 of the 19 checks: the adult lines do not scale with them (/l/
-channels 1.85 and 1.55 cm apart against the 2.0–2.8 cm line; /s/ narrows to two and three
-channels; the child's bunched /ɹ/ front cavity is 6.4 cm³ in a smaller mouth). They are
-reported; the tests assert the male lines only.
+/ɹ/ is open along its whole length since the review (its narrowest cut 0.39 cm², where the
+reviewed preset had nine cuts without air), and the check refuses a closure; its root is drawn
+further back since the slice fix, for its pharyngeal constriction in the ring. The female and
+child presets do not pass every check: the adult lines do not scale with them (the /l/
+channels' distance, /s/ narrowing to more than one channel, the child's smaller front cavity).
+They are reported by `chimera tract3d presets --body`; the tests assert the male lines only.
 
-Piriform fossae: 2.63 cm³ each and 1.75 cm deep in the default male model, measured from the
-model's own pockets, within the 2.1–2.9 cm³ and 1.6–2.0 cm of four speakers'
-volumetric MRI ([doi:10.1121/1.417990](https://doi.org/10.1121/1.417990)). Valleculae: present
-off the midline, absent at z = 0 (the median glossoepiglottic fold).
+Piriform fossae: 1.27 cm³ each and 1.79 cm deep in the default male model, measured from the
+model's own pockets, within the 1.0–1.4 cm³ for each cavity and 1.6–2.0 cm of four speakers'
+volumetric MRI ([doi:10.1121/1.417990](https://doi.org/10.1121/1.417990); the abstract gives
+the pair's 2.1–2.9 cm³, the report version of the paper each cavity's: research.md §2.1). The
+first build set 2.63 cm³ for each, the pair's figure, and the MRI fits drove the fossae to the
+parameters' bounds. Valleculae: 0.80 cm deep beside the median glossoepiglottic fold, which
+stands in them as a ridge (0.36 cm deep over it).
 
 ## 3. English /ɹ/ and the USC volumes (T-/ɹ/)
 
@@ -253,57 +306,68 @@ incisors and palate), the coronal outline of the tongue body in /ɹ/, and any ar
 
 ## 4. Cost
 
-Native release build, one male model, 65 laminae, 73 cuts: median 1.51 ms per compute over the
-15 presets (50 calls each), slowest preset 2.58 ms; the display meshes 0.85 ms for 9881
-vertices (single crowns and gums included), measured while the machine's load average was
-about 8. Design target ≤ 5 ms per compute: met. (The reviewed head: 3.13 ms and 7.18 ms under a
-load of about 30, 3304 vertices.) In the browser every screen now asks the engine for the
-posture's view each time the posture changes (`tract3dView`: positions as a float buffer,
-without JSON); its timing is in [model-design.md §0.2](model-design.md#02-integration-2026-11-10-one-head-and-tract-on-every-screen).
+Native release build, one male model, 65 laminae, 73 cuts: median 1.90 ms per compute over the
+16 presets (50 calls each), slowest preset 3.14 ms; the display meshes 0.86 ms for 9972
+vertices, measured while the machine's load average was about 6. Design target ≤ 5 ms per
+compute: met. (Before the slice fix: 1.51 ms and 2.58 ms; the ring's polygon, the fossae's
+and valleculae's outlines and the folds are the difference.) In the browser every screen asks
+the engine for the posture's view each time the posture changes (`tract3dView`: positions as
+a float buffer, without JSON); its timing is in
+[model-design.md §0.2](model-design.md#02-integration-2026-11-10-one-head-and-tract-on-every-screen)
+and was not measured again.
 
 ## 5. Critique: where the model departs from MRI and why
 
 Classes as in [validation-plan.md §9](validation-plan.md).
 
-- **Anatomy, fixed per speaker: the larynx region.** The fit drives the piriform fossae to about
-  the smallest the parameters allow (width 0.31–0.33 cm, bound 0.3; depth 1.01–1.09 cm, bound 1.0;
-  both speakers) and the male hypopharynx to its widest (half-width 2.40 cm, bound 2.4). In the
-  DVTD cuts just above the glottis the fossae are smaller, or merged with the hypopharynx, than
-  an ellipsoid of the published volume beside the laryngeal tube. The two references disagree
-  (DVTD's smoothed segmentation, 1.2 × 1.2 × 1.8 mm voxels; the four speakers of the volumetric
-  study); the defaults follow the published volumes, the fit follows DVTD. Where the MRI splits
-  into separate regions there, the model's count is within ±1 on 35/47 (male) and 45/93 (female)
-  cuts. In 11 of 44 fits the model's narrowest cut lies in the lowest 15 % of the tract: the
-  laryngeal tube, whose profile is the engine's epilarynx and stays unfitted.
-- **Lip rounding: a freedom since the review, and its limit.** `lipRound` and the resonance
-  term brought the rounded vowels' F1 from up to +35 % to within 10 % for 12 of 16 cases (§1).
-  The four left (male /y/ and /ʊ/, female /ʊ/ and /ɔ/) no longer hang on the lips: three of
-  them have a fitted pharynx narrower than the MRI's (next point).
-- **Missing freedom: pharynx depth and width.** The model's depth in the oropharynx is the
-  engine's midsagittal gap (bounded by its tongue-root range), and its width a single half-width
-  per level shared by all of a speaker's sounds. For the sounds whose MRI pharynx is widest the
-  fit stays under it (mean pharynx area 0.65–0.79 of the MRI's for the male /y/ and both /ʊ/).
-- **Reference artefact and lip geometry: /f/.** Both speakers' /f/ is the worst fit (d 0.90 and
-  1.16). The DVTD authors note that smoothing widened the /f/ constriction of their meshes
+- **Anatomy, fixed per speaker: the larynx region.** With the fossae at the published size
+  for one cavity (they were built at the pair's) the two references agree better, and the
+  model's region count is within one of the MRI's on 44/47 and 86/93 of the cuts where the
+  MRI splits. The fit still ends with small fossae: the male's 0.30 cm wide (its bound) and
+  1.52 cm deep, the female's 0.74 cm wide and 1.00 cm deep (its bound); the male's
+  hypopharyngeal ring is fitted 2.78 cm in half-width and the laryngeal tube at 1.35 times
+  the voice's area (0.77 times for the female). What the fit cannot move: how long the
+  laryngeal tube is (the engine's, shared with the voice; the male speaker's three channels
+  stay apart higher than it reaches, which the folds' height only partly answers), and how
+  much room the larynx has front to back (the tube's rim is therefore wide, and the cut at
+  the hypopharynx's floor too wide for its depth: §1).
+- **Shape: thin tips, tooth blocks, the lip end.** The pharynx's lumen ends sideways where
+  the ring meets the tongue's root or the epiglottis; at a shallow angle that is a tip a
+  millimetre or two thick, which no smoothed 1.2 mm segmentation shows. In the mouth the tooth
+  rows are blocks with flat occlusal and side faces, the incisors' rows rise into place in
+  steps 2.5–4.5 mm off the midline, and the lips' tube ends on a plane just in front of the
+  lips: the cuts at the teeth and lips keep straight edges and notches (cut IoU 0.55 and 0.58
+  at 0.9 of the length against 0.74 between the speakers). These three are the next things
+  to model if the cut shape is to reach the two speakers' own difference.
+- **Lip rounding.** `lipRound` and the resonance term keep the rounded vowels' F1 within 10 %
+  in 15 of 16 cases (the female /ɔ/ is at +14 %); `derive` now sets the rounding from the
+  engine's own lip articulators, so the presets and every live gesture round the 3D lips.
+- **A freedom since the slice fix: the pharynx's width.** The lumen's width now follows its
+  depth (the ring closes on the tongue), and each sound's fit may draw the ring's sides in
+  (`lateralSqueeze`: fitted near 0 for the male's close vowels, 0.5 to 0.9 for the open
+  vowels and /x/). The model's depth in the oropharynx is still the engine's midsagittal gap, bounded
+  by its tongue-root range.
+- **Reference artefact and lip geometry: /f/.** Both speakers' /f/ is the worst fit (d 1.05 and
+  1.02). The DVTD authors note that smoothing widened the /f/ constriction of their meshes
   ([doi:10.1038/s41597-020-00597-w](https://doi.org/10.1038/s41597-020-00597-w)); the model's
   labiodental closure leaves the lip end shut in the voxels (its last cuts hold no air), so its
-  1D resonances are those of a closed tube (F1 −50 % and −61 %).
+  1D resonances are those of a closed tube.
 - **Resolution: sibilants.** Unconstrained, an earlier fit narrowed the male /s/ and /ʃ/ and the
   female /ʃ/ to slits about 1 mm thick, which a pipeline at this resolution cannot follow; with
   the 1.5 mm limit (now on the true hydraulic thickness: the perimeter was a staircase 28 % long
-  on a circle) the fitted channels are wider than the MRI's (the male /ʃ/ 2.9 times at its
-  narrowest). The model also makes sub-mm slivers between a tongue margin and the teeth that a
+  on a circle) the fitted channels are wider than the MRI's (the male /ʃ/ 5.2 times at its
+  narrowest in this run). The model also makes sub-mm slivers between a tongue margin and the teeth that a
   smoothed segmentation does not have; both pipelines drop regions under 0.01 cm².
 - **Derivation.** The default shapes come from the engine's targets, which were calibrated to
   formants through its 1D area law, without any geometric reference: median default d
-  0.868 / 0.801. Fitting the eight `derive` constants to all 44 sounds (first build) moved the
-  median default d only in the third decimal, with constants that differ between runs: what
-  limits the defaults is the midline targets. The constants were left as they were; the targets
-  move with the sound's port.
+  0.887 / 0.743, itemised per sound and per stretch of the tract in §1. Fitting `derive`'s
+  constants moves the median by four hundredths at most, with constants at their bounds: what
+  limits the defaults is the midline targets; they move with the sound's port.
 - **Speaker variation.** The two DVTD speakers differ by a median scaled d of 0.73 for the same
-  sound, and their cuts by IoU 0.71; the fitted model's cuts reach IoU 0.66 / 0.71 against the
-  speaker it was fitted to. The plan's fit lines (0.30 / 0.45) ask for a model closer to one
-  speaker than two sounds of that speaker are to each other; this model meets the weaker
+  sound, and their cuts by IoU 0.71; the fitted model's cuts reach IoU 0.65 / 0.66 against the
+  speaker it was fitted to (at the pharynx's stations as much as the other speaker's, or
+  more: §1). The plan's fit lines (0.30 / 0.45) ask for a model closer to one speaker than two
+  sounds of that speaker are to each other; in area function this model meets the weaker
   standard of being closer to each speaker than the other speaker is.
 
 Known limits of the references: one male and one female German speaker; sounds sustained for
@@ -313,9 +377,10 @@ unregistered here.
 
 ## 6. Not established
 
-- The area-function lines of T-fit (median d ≤ 0.30, worst ≤ 0.45), the female identification
-  (16 of 22 against ≥ 20), "every resonance within 10 %" (9 of 44 sounds are outside it) and
-  T-default (median ≤ 0.71).
+- The area-function lines of T-fit (median d ≤ 0.30, worst ≤ 0.45), the identification (19 of
+  22 each against ≥ 20), "every resonance within 10 %" (7 of 44 sounds are outside it), the
+  lower-pharynx line on every cut (9 sounds miss it on one or two cuts), the cut shape at the
+  two speakers' own difference, and T-default (median ≤ 0.71).
 - Anatomy from the dental-cast scans: the arches and vault are fitted to the area functions
   instead; the casts were not measured.
 - Registration of the USC planes, and any measured /ɹ/ feature.
