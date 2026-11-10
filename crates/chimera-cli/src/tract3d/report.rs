@@ -61,7 +61,7 @@ pub fn reference(r: &Measurement, path: &Path) -> Result<(), String> {
 
 /// MRI reference next to the fitted model, both measured by the same voxel pipeline.
 pub fn comparison(r: &Measurement, rvol: &Volume, fit: Option<(&Measurement, &Volume)>, default: Option<&Measurement>, title: &str, numbers: &Value, path: &Path) -> Result<(), String> {
-    let mut svg = Svg::new(1500, 1180, &format!("{title} · {DVTD}"));
+    let mut svg = Svg::new(1500, 1560, &format!("{title} · {DVTD}"));
     let f3 = |v: &Value| v.as_f64().map_or("—".into(), |x| format!("{x:.3}"));
     let hz = |v: &Value| v.as_array().map_or("—".into(), |a| a.iter().filter_map(Value::as_f64).map(|x| format!("{x:.0}")).collect::<Vec<_>>().join(" / "));
     svg.text(16., 48., &format!("area functions vs normalised length: white MRI, amber fitted model, blue default (engine targets + derive). d fitted {}, default {}", f3(&numbers["fitD"]), f3(&numbers["defaultD"])));
@@ -105,6 +105,25 @@ pub fn comparison(r: &Measurement, rvol: &Volume, fit: Option<(&Measurement, &Vo
         let front = m.slices.last().unwrap().origin;
         midsagittal(&mut svg, v, o, front, 900., 1150., 15., "#ffc573");
     }
+    // the larynx and the lower pharynx cut by cut: every 5 mm from 5 mm above the glottis
+    svg.text(16., 1200., "Lower tract, every 5 mm from 0.5 cm above the glottis (8 × 8 cm each): MRI above, the fitted model below");
+    for j in 0..10 {
+        let x = 16. + j as f64 * 147.;
+        let s = 0.5 + 0.5 * j as f64;
+        fn at(m: &Measurement, s: f64) -> Option<&volume::Slice> {
+            m.slices.iter().min_by(|a, b| (a.s - s).abs().total_cmp(&(b.s - s).abs())).filter(|q| (q.s - s).abs() < 0.2)
+        }
+        if let Some(q) = at(r, s) {
+            svg.frame(x, 1212., 140., 140.);
+            mask(&mut svg, q, x, 1212., 140., "#e3edf3");
+            svg.small(x, 1366., &format!("{s:.1} cm · {:.2} cm² · {} ch", q.area, q.channels));
+        }
+        if let Some(q) = fit.and_then(|(m, _)| at(m, s)) {
+            svg.frame(x, 1380., 140., 140.);
+            mask(&mut svg, q, x, 1380., 140., "#ffc573");
+            svg.small(x, 1534., &format!("{:.2} cm² · {} ch", q.area, q.channels));
+        }
+    }
     fs::write(path, svg.end()).map_err(|e| e.to_string())
 }
 
@@ -131,10 +150,30 @@ pub fn table(table: &Value, path: &Path) -> Result<(), String> {
             f(&g["medianBetweenSpeakerScaledD"], 1., 2),
         );
     }
+    // cut shape and the lower pharynx per speaker (this project's measures against the dataset)
+    s.push_str("\n| Speaker | Cut IoU, median (between the two speakers) | Cut aspect error, median (between speakers) | Lower pharynx: model's regions within ±1 where MRI splits | Sounds with fitted d ≤ 0.45 | Default d within its line | Sounds with a resonance over 10 % off |\n|---|---:|---:|---:|---:|---:|---:|\n");
+    for g in table["groups"].as_array().unwrap() {
+        let _ = writeln!(
+            s,
+            "| {} | {} ({}) | {} ({}) | {}/{} | {}/{} | {}/{} | {} |",
+            g["body"].as_str().unwrap_or(""),
+            f(&g["medianCutIou"], 1., 2),
+            f(&g["medianBetweenSpeakerCutIou"], 1., 2),
+            f(&g["medianCutAspectError"], 1., 2),
+            f(&g["medianBetweenSpeakerCutAspectError"], 1., 2),
+            g["lowerPharynxWithinOne"],
+            g["lowerPharynxSplitCuts"],
+            g["fitWithin045"],
+            g["cases"],
+            g["defaultWithinLine"],
+            g["cases"],
+            g["soundsWithResonanceOver10"],
+        );
+    }
     // This table goes into the repository's docs: it holds this project's errors only. The
     // reference's own measurements (where its constriction is, how wide, how many channels)
     // stay in table.json, outside git.
-    s.push_str("\n| Case | IPA | Default d | Fitted d | Between speakers (scaled) | Nearest reference | F1/F2/F3 error % (fitted) | Constriction, model against MRI: place (Δ s/L), area (×), channels | Mean cut IoU |\n|---|---|---:|---:|---:|---|---|---|---:|\n");
+    s.push_str("\n| Case | IPA | Default d | Default area against MRI by stretch: larynx / pharynx / mouth / lips (×) | Fitted d | Between speakers (scaled) | Nearest reference | F1/F2/F3 error % (fitted) | Constriction, model against MRI: place (Δ s/L), area (×), channels | Mean cut IoU |\n|---|---|---:|---|---:|---:|---|---|---|---:|\n");
     for r in table["rows"].as_array().unwrap() {
         let peaks = r["fitResonanceErrorPercent"].as_array().map_or("—".into(), |a| a.iter().map(|x| f(x, 1., 0)).collect::<Vec<_>>().join(" / "));
         let (rc, fc) = (&r["referenceConstriction"], &r["fitConstriction"]);
@@ -150,12 +189,15 @@ pub fn table(table: &Value, path: &Path) -> Result<(), String> {
             let v: Vec<f64> = a.iter().filter_map(|x| x["iou"].as_f64()).collect();
             v.iter().sum::<f64>() / v.len().max(1) as f64
         });
+        // (the geometric mean of the default model's area over the MRI's, per stretch of the tract)
+        let regions = r["defaultRegionLog2"].as_array().map_or("—".into(), |a| a.iter().map(|x| x.as_f64().map_or("—".into(), |v| format!("{:.2}", v.exp2()))).collect::<Vec<_>>().join(" / "));
         let _ = writeln!(
             s,
-            "| {} | {} | {} | {} | {} | {} | {} | {} | {} |",
+            "| {} | {} | {} | {} | {} | {} | {} | {} | {} | {} |",
             r["case"].as_str().unwrap_or(""),
             r["ipa"].as_str().unwrap_or(""),
             f(&r["defaultD"], 1., 3),
+            regions,
             f(&r["fitD"], 1., 3),
             f(&r["betweenSpeakerScaledD"], 1., 2),
             if r["identified"] == true { "itself".to_string() } else { r["nearestReference"].as_str().unwrap_or("—").to_string() },

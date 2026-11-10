@@ -46,10 +46,11 @@ const ARTIC_KEYS: [ArticKey; 13] = [
     ArticKey::Epilarynx,
     ArticKey::Lateral,
 ];
-/// 3D parameters the per-sound fit moves: the tongue's, and the lips' rounding.
-const SHAPE_KEYS: [&str; 12] = ["sideRoot", "sideBack", "sideDorsum", "sideBlade", "sideTip", "grooveRoot", "grooveBack", "grooveDorsum", "grooveBlade", "grooveTip", "grooveWidth", "lipRound"];
+/// 3D parameters the per-sound fit moves: the tongue's, the lips' rounding, and how far the
+/// pharynx's side walls are drawn in (they move with the sound; the ring's own size is anatomy).
+const SHAPE_KEYS: [&str; 13] = ["sideRoot", "sideBack", "sideDorsum", "sideBlade", "sideTip", "grooveRoot", "grooveBack", "grooveDorsum", "grooveBlade", "grooveTip", "grooveWidth", "lipRound", "lateralSqueeze"];
 /// Anatomy fitted once per speaker.
-pub const ANATOMY_KEYS: [&str; 12] = ["pharynxWidthNaso", "pharynxWidthOro", "pharynxWidthHypo", "pharynxShape", "archWidth", "lowerArchWidth", "vaultDepth", "vaultShape", "epilarynxWidth", "piriformWidth", "piriformDepth", "tongueWidth"];
+pub const ANATOMY_KEYS: [&str; 14] = ["pharynxWidthNaso", "pharynxWidthOro", "pharynxWidthHypo", "pharynxShape", "archWidth", "lowerArchWidth", "vaultDepth", "vaultShape", "epilarynxWidth", "epiglottisCurl", "aryFoldHeight", "piriformWidth", "piriformDepth", "tongueWidth"];
 
 fn model_args(name: &str, body: BodyMix) -> Result<(HumanArtic, ShapeParams), String> {
     if let Some(p) = presets(body).into_iter().find(|p| p.name == name) {
@@ -121,6 +122,26 @@ pub fn distance(sa: &[f64], aa: &[f64], sb: &[f64], ab: &[f64]) -> f64 {
         .sum::<f64>()
         / 101.)
         .sqrt()
+}
+/// Where along the tract a model's area function departs from the reference's: the mean of
+/// log2(A_model / A_reference) over four stretches of normalised length (the larynx to 0.2, the
+/// pharynx to 0.55, the mouth to 0.9, the lips), areas floored at 0.05 cm² as in `distance`.
+pub fn by_region(sa: &[f64], aa: &[f64], sb: &[f64], ab: &[f64]) -> [f64; 4] {
+    let (la, lb) = (*sa.last().unwrap(), *sb.last().unwrap());
+    let edges = [0., 0.2, 0.55, 0.9, 1.0001];
+    let mut out = [0.; 4];
+    for (j, o) in out.iter_mut().enumerate() {
+        let (mut sum, mut n) = (0., 0);
+        for i in 0..101 {
+            let t = i as f64 / 100.;
+            if t >= edges[j] && t < edges[j + 1] {
+                sum += (interp(sa, aa, t * la).max(0.05) / interp(sb, ab, t * lb).max(0.05)).log2();
+                n += 1;
+            }
+        }
+        *o = sum / n.max(1) as f64;
+    }
+    out
 }
 /// F1–F3 of an area function through the engine's chain-matrix code (closed glottis end,
 /// radiating lips): the same solver for model and reference.
@@ -653,6 +674,10 @@ fn validate(root: &Path, out: &Path, iters: usize, anatomy_iters: usize, jobs: u
             let (s, a) = af(q);
             distance(&rs, &ra, &s, &a)
         });
+        let default_regions = default_voxel.as_ref().map(|(_, q)| {
+            let (s, a) = af(q);
+            by_region(&s, &a, &rs, &ra)
+        });
         let (best, objective) = fit_posture(&mut m, &mut f, &start, r, iters);
         // The fast objective sees the tract at its cuts, 2.5 mm apart; between two of them a
         // channel can still be too thin for the voxel pipeline to follow, and the fit then has
@@ -692,6 +717,10 @@ fn validate(root: &Path, out: &Path, iters: usize, anatomy_iters: usize, jobs: u
         let fit_d = measured.as_ref().ok().map(|(_, q)| {
             let (s, a) = af(q);
             distance(&rs, &ra, &s, &a)
+        });
+        let fit_regions = measured.as_ref().ok().map(|(_, q)| {
+            let (s, a) = af(q);
+            by_region(&s, &a, &rs, &ra)
         });
         let reference_peaks = resonances(&rs, &ra);
         let measured_peaks = measured.as_ref().ok().map(|(_, q)| {
@@ -749,6 +778,7 @@ fn validate(root: &Path, out: &Path, iters: usize, anatomy_iters: usize, jobs: u
         Ok(json!({
             "case": c.name, "index": c.index, "sound": c.sound, "ipa": symbol, "body": label,
             "defaultD": default_d, "defaultFastD": default_fast, "fitD": fit_d, "fitFastD": fast_d, "objective": objective,
+            "defaultRegionLog2": default_regions, "fitRegionLog2": fit_regions,
             "measurementError": measured.as_ref().err(), "backedOff": backed_off,
             "referenceLength": r.length, "fitLength": measured.as_ref().ok().map(|(_, q)| q.length),
             "referenceVolume": r.volume, "fitVolume": measured.as_ref().ok().map(|(_, q)| q.volume),
@@ -808,7 +838,28 @@ fn validate(root: &Path, out: &Path, iters: usize, anatomy_iters: usize, jobs: u
         let identified = rr.iter().filter(|r| r["identified"] == true).count();
         let fe = res("fitResonanceErrorPercent");
         let headline: Vec<f64> = rr.iter().filter(|r| HEADLINE.contains(&(r["sound"].as_u64().unwrap_or(0) as usize))).filter_map(|r| r["fitD"].as_f64()).collect();
+        // cut shape against the speaker (and between the two speakers), the lower pharynx's count
+        let shape = |key: &str, field: &str| rr.iter().filter_map(|r| r[key].as_array()).flatten().filter_map(|m| m[field].as_f64()).collect::<Vec<_>>();
+        let (mut split, mut within) = (0, 0);
+        for r in &rr {
+            if let (Some(a), Some(b)) = (r["lowerPharynxChannels"]["reference"].as_array(), r["lowerPharynxChannels"]["fit"].as_array()) {
+                for (x, y) in a.iter().zip(b) {
+                    if let (Some(x), Some(y)) = (x.as_i64(), y.as_i64()) {
+                        if x >= 2 {
+                            split += 1;
+                            within += i32::from((x - y).abs() <= 1);
+                        }
+                    }
+                }
+            }
+        }
         groups.push(json!({
+            "medianCutIou": median(shape("shapeMetrics", "iou")), "medianCutAspectError": median(shape("shapeMetrics", "aspectLog2Error")),
+            "medianBetweenSpeakerCutIou": median(shape("betweenSpeakerShapeMetrics", "iou")), "medianBetweenSpeakerCutAspectError": median(shape("betweenSpeakerShapeMetrics", "aspectLog2Error")),
+            "lowerPharynxSplitCuts": split, "lowerPharynxWithinOne": within,
+            "defaultWithinLine": rr.iter().filter(|r| r["defaultD"].as_f64().is_some_and(|d| d <= r["betweenSpeakerD"].as_f64().unwrap_or(1.).max(1.))).count(),
+            "fitWithin045": rr.iter().filter(|r| r["fitD"].as_f64().is_some_and(|d| d <= 0.45)).count(),
+            "soundsWithResonanceOver10": rr.iter().filter(|r| r["fitResonanceErrorPercent"].as_array().is_some_and(|a| a.iter().filter_map(Value::as_f64).any(|x| x.abs() > 10.))).count(),
             "body": label, "cases": rr.len(), "measured": fit.len(),
             "medianFitD": median(fit.clone()), "maxFitD": fit.iter().cloned().fold(f64::NAN, f64::max), "medianHeadlineFitD": median(headline),
             "identified": identified,
@@ -832,7 +883,7 @@ fn validate(root: &Path, out: &Path, iters: usize, anatomy_iters: usize, jobs: u
     Ok(())
 }
 
-/// Fits the eight `derive` constants to the median default d over every reference in a
+/// Fits the `derive` constants to the median default d over every reference in a
 /// validate output (fast slicer, fitted anatomy). Prints the constants for params.rs.
 fn fit_derive(dir: &Path, iters: usize) -> Result<(), String> {
     use chimera::anatomy::tract3d::{derive, derive_with, DERIVE};
@@ -860,7 +911,7 @@ fn fit_derive(dir: &Path, iters: usize) -> Result<(), String> {
     refs.sort_by_key(|r| (r.0, r.1));
     let mut models = [Tract3d::new(BodyMix::MALE.body()), Tract3d::new(BodyMix::FEMALE.body())];
     let mut f = Tract3dFrame::default();
-    let mut eval = |c: &[f64; 8]| -> f64 {
+    let mut eval = |c: &[f64; 10]| -> f64 {
         let mut ds = Vec::new();
         for (speaker, sound, s, a) in &refs {
             let (body, _) = body_of(*speaker);
@@ -885,7 +936,7 @@ fn fit_derive(dir: &Path, iters: usize) -> Result<(), String> {
     let res = nelder_mead(
         |x| eval(&x.try_into().unwrap()),
         &DERIVE,
-        NelderMeadOpts { lo: Some(vec![-0.5, -0.5, 0., 0., -0.5, 0., 0., -0.5]), hi: Some(vec![1.4, 1.4, 0.8, 0.8, 1.4, 1.4, 1.4, 1.4]), step: Some(vec![0.15; 8]), max_iter: Some(iters), ..Default::default() },
+        NelderMeadOpts { lo: Some(vec![-0.5, -0.5, 0., 0., -0.5, 0., 0., -0.5, 0., 0.]), hi: Some(vec![1.4, 1.4, 0.8, 0.8, 1.4, 1.4, 1.4, 1.4, 1.5, 1.2]), step: Some(vec![0.15; 10]), max_iter: Some(iters), ..Default::default() },
     );
     println!("derive constants: before {DERIVE:?} median default d (fast) {before:.3}\nafter  {:?} median default d (fast) {:.3} in {} iterations", res.x.iter().map(|x| (x * 1000.).round() / 1000.).collect::<Vec<_>>(), res.fx, res.iters);
     write(&dir.join("derive-fit.json"), &json!({"before": DERIVE, "beforeMedianFastD": before, "after": res.x, "afterMedianFastD": res.fx, "iterations": res.iters, "cases": refs.len()}))
