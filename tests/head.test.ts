@@ -10,7 +10,7 @@ import { initEngine } from "./harness.ts";
 await initEngine();
 const api = await import("../src/wasm/engine.ts");
 const { buildHead } = await import("../src/ui/render/head/asset.ts");
-const { HeadRig } = await import("../src/ui/render/head/rig.ts");
+const { HeadRig, bared } = await import("../src/ui/render/head/rig.ts");
 
 const MALE = { female: 0, child: 0 };
 const bytes = readFileSync(join(import.meta.dir, "..", "src", "ui", "render", "head", "head.generated.bin"));
@@ -31,7 +31,7 @@ test("the head mesh is whole: three bodies, valid triangles, weights in range, a
   let max = 0;
   for (const i of mesh.indices) max = Math.max(max, i);
   expect(max).toBe(mesh.n - 1);
-  for (const w of [mesh.jaw, mesh.upper, mesh.lower, mesh.tint]) {
+  for (const w of [mesh.jaw, mesh.upper, mesh.lower, mesh.tint, mesh.inside]) {
     expect(w.length).toBe(mesh.n);
     expect(w.every((x) => x >= 0 && x <= 1.0001)).toBe(true);
   }
@@ -72,8 +72,10 @@ test("the head is the same on both sides: ears, eyelids and all (review: left pa
       const z = b[3 * i + 2];
       left = Math.min(left, z);
       right = Math.max(right, z);
-      if (z < -7.6) (xl += b[3 * i]), nl++;
-      if (z > 7.6) (xr += b[3 * i]), nr++;
+      // (the line is off the grid the stored coordinates lie on: a vertex at exactly 7.6 cm was
+      // counted on one side and not on the other by the last bit of the subdivision's sums)
+      if (z < -7.6037) (xl += b[3 * i]), nl++;
+      if (z > 7.6037) (xr += b[3 * i]), nr++;
     }
     expect(right).toBeGreaterThan(7.8);
     expect(left + right).toBeCloseTo(0, 1);
@@ -146,15 +148,42 @@ test("the skin follows the engine's jaw and lips", () => {
       };
       return { skin: near(mesh.lipLine.upper) - near(mesh.lipLine.lower), engine: view.display.lips.upper[0].y - view.display.lips.lower[0].y, out: Float32Array.from(out), view };
     };
-    // shut lips meet; open lips stand as far apart as the engine's
+    // shut lips meet; lips open as in speech stand as far apart as the engine's
     const shut = gapAt({ ...api.NEUTRAL, lipAp: -0.2 });
     expect(shut.engine).toBe(0);
     expect(Math.abs(shut.skin)).toBeLessThan(0.05);
+    const speech = gapAt({ ...api.NEUTRAL, jaw: 0.8, lipAp: 1.0, lipWidth: 0.8 });
+    expect(speech.engine).toBeGreaterThan(0.9);
+    expect(speech.engine).toBeLessThan(1.1);
+    expect(Math.abs(speech.skin - speech.engine)).toBeLessThan(0.08);
+    expect(bared(speech.view.display, 1).upper).toEqual(speech.view.display.lips.upper);
+    // opened wider, the lips draw off the teeth: the skin's opening is the engine's and more,
+    // by what `bared` says (slice-critic: an /a/ showed no upper teeth and a slit of a mouth)
     const open = gapAt({ ...api.NEUTRAL, jaw: 1.2, lipAp: 1.4, lipWidth: 0.8 });
     expect(open.engine).toBeGreaterThan(1.2);
-    expect(Math.abs(open.skin - open.engine)).toBeLessThan(0.08);
-    // every vertex of the lips' line lies on the engine's lip edge for its lateral offset
-    const lips = open.view.display.lips;
+    const shown = bared(open.view.display, 1);
+    expect(shown.upper[0].y).toBeGreaterThan(open.view.display.lips.upper[0].y);
+    expect(shown.lower[0].y).toBeLessThan(open.view.display.lips.lower[0].y);
+    expect(Math.abs(open.skin - (shown.upper[0].y - shown.lower[0].y))).toBeLessThan(0.08);
+    const corner = shown.upper.length - 1;
+    expect(shown.upper[corner]).toEqual(open.view.display.lips.upper[corner]);
+    // at its widest the upper lip stands at the upper incisors' gum line, the lower lip under
+    // the lower incisors' crowns
+    const wideOpen = api.tract3dView(model, { ...api.NEUTRAL, jaw: 2.6, lipAp: 2.4, lipWidth: 1 }).display;
+    const teeth = (name: string) => wideOpen.outlines.find((o) => o.name === name)!.points[2];
+    const wide = bared(wideOpen, 1);
+    expect(wide.upper[0].y - teeth("upperTeeth").y).toBeGreaterThan(0.85);
+    expect(teeth("lowerTeeth").y - wide.lower[0].y).toBeGreaterThan(0.4);
+    // inside the lips' line nothing hangs in the opening: every such vertex lies behind its
+    // lip's edge and outside the opening's height there
+    for (let i = 0; i < mesh.n; i++) {
+      if (mesh.inside[i] < 0.2 || Math.abs(open.out[3 * i + 2]) > 0.8) continue;
+      const y = open.out[3 * i + 1];
+      expect(y >= shown.upper[0].y - 0.12 || y <= shown.lower[0].y + 0.12).toBe(true);
+      expect(open.out[3 * i]).toBeLessThan(Math.max(shown.upper[0].x, shown.lower[0].x));
+    }
+    // every vertex of the lips' line lies on that lip edge for its lateral offset
+    const lips = { ...open.view.display.lips, ...shown };
     const edge = (pts: { x: number; y: number }[], az: number) => {
       const step = lips.z[1] - lips.z[0];
       const i = Math.min(lips.z.length - 2, Math.floor(az / step)), t = Math.min(1, az / step - i);
@@ -228,6 +257,11 @@ test("tract3dView: the meshes' positions as floats, topology on request, the sam
     // a 3D offset reaches the view: rounding narrows the lips' opening
     const round = api.tract3dView(model, a, { lipRound: 1 });
     expect(round.display.lips.halfWidth).toBeCloseTo(0.35 * full.display.lips.halfWidth, 9);
+    // and the engine's own rounded lips round the 3D ones without any offset (slice-critic:
+    // /u/ was drawn with spread lips)
+    const u = api.tract3dView(model, { ...a, lipProt: 1.4, lipWidth: 0.2, lipAp: 0.3 });
+    const spread = api.tract3dView(model, { ...a, lipProt: 0, lipWidth: 0.2, lipAp: 0.3 });
+    expect(u.display.lips.halfWidth).toBeLessThan(0.6 * spread.display.lips.halfWidth);
     expect(() => api.tract3dView(model, a, { unknown: 1 })).toThrow(/unknown/);
   } finally {
     api.dropAirwayModel(model);

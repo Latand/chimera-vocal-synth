@@ -5,8 +5,16 @@
  *    weights for the jaw and what hangs from it);
  *  - the lips' meeting line: the vertices where the skin's own lips meet are put on the engine's
  *    upper and lower lip edges, and the rest of each lip follows by its weight. The mouth's
- *    opening seen from outside is then the opening the cuts measure.
+ *    opening seen from outside is then the opening the cuts measure;
+ *  - the loops of skin inside that line (the mesh's mouth is open at the fourth) are rolled in
+ *    behind the lips' edges, towards the gums: left to their weights they hung in the opening
+ *    (an /a/ open 2 cm showed a slit under 1 cm with a pink slab in it).
  * The mouth's corners move towards the midline as the lips round.
+ *
+ * One thing the skin does that the engine's lips do not: opened wide, the lips draw off the
+ * teeth (`bared`). The engine's lip edges stay within a millimetre or two of the incisors' edges
+ * whatever the opening; a mouth opened to sing or to yawn shows the crowns, and at its widest
+ * the gum line. The cuts measure the engine's lips; the skin shows that much more of the teeth.
  */
 import type { Tract3dDisplay } from "../../../wasm/types.ts";
 import type { HeadMesh } from "./asset.ts";
@@ -31,6 +39,9 @@ export class HeadRig {
   private readonly jaw: Float32Array;
   private readonly lip: Float32Array;
   private readonly movers: Int32Array;
+  /** the vertices inside the lips' line, and each one's share of the upper lip (0 lower … 1 upper) */
+  private readonly inner: Int32Array;
+  private readonly share: Float32Array;
   private readonly binsU = new Float64Array(3 * (BINS + 1));
   private readonly binsL = new Float64Array(3 * (BINS + 1));
 
@@ -55,14 +66,31 @@ export class HeadRig {
     this.lip = new Float32Array(n);
     const movers: number[] = [];
     for (let i = 0; i < n; i++) {
-      this.jaw[i] = Math.sin((Math.PI / 2) * Math.min(1, mesh.jaw[i] / 0.84));
+      // (the throat's skin stays over the larynx: the skeleton lets the jaw pull the neck's
+      // front back with it, which uncovered the engine's piriform fossae when the mouth opened)
+      const yt = this.rest[3 * i + 1] / k;
+      const throat = Math.min(1, Math.max(0, (yt - 2.2) / 1.8));
+      this.jaw[i] = Math.sin((Math.PI / 2) * Math.min(1, mesh.jaw[i] / 0.84)) * throat * throat * (3 - 2 * throat);
       this.lip[i] = Math.min(1, mesh.upper[i] + mesh.lower[i]);
       if (this.jaw[i] > 0 || this.lip[i] > 0) movers.push(i);
     }
     this.movers = Int32Array.from(movers);
-    let corner = 0;
-    for (const i of mesh.lipLine.upper) corner = Math.max(corner, Math.abs(this.rest[3 * i + 2]));
+    let corner = 0, meet = 0;
+    for (const i of mesh.lipLine.upper) {
+      corner = Math.max(corner, Math.abs(this.rest[3 * i + 2]));
+      meet += this.rest[3 * i + 1] / mesh.lipLine.upper.length;
+    }
     this.corner = corner;
+    const inner: number[] = [];
+    this.share = new Float32Array(n);
+    for (let i = 0; i < n; i++) {
+      if (mesh.inside[i] <= 0) continue;
+      inner.push(i);
+      const u = mesh.upper[i], l = mesh.lower[i];
+      // (a vertex neither lip's bones hold belongs to the lip it lies in at rest)
+      this.share[i] = u + l > 0.05 ? u / (u + l) : this.rest[3 * i + 1] >= meet ? 1 : 0;
+    }
+    this.inner = Int32Array.from(inner);
   }
 
   /**
@@ -122,8 +150,9 @@ export class HeadRig {
       }
       for (let q = last + 1; q <= BINS; q++) (bins[3 * q] = bins[3 * last]), (bins[3 * q + 1] = bins[3 * last + 1]);
     };
-    table(mesh.lipLine.upper, mesh.upper, d.lips.upper, this.binsU);
-    table(mesh.lipLine.lower, mesh.lower, d.lips.lower, this.binsL);
+    const lips = bared(d, k);
+    table(mesh.lipLine.upper, mesh.upper, lips.upper, this.binsU);
+    table(mesh.lipLine.lower, mesh.lower, lips.lower, this.binsL);
     const { binsU, binsL } = this;
     for (const i of this.movers) {
       const u = mesh.upper[i], l = mesh.lower[i];
@@ -133,8 +162,41 @@ export class HeadRig {
       out[3 * i] += u * (binsU[3 * b] * (1 - t) + binsU[3 * b + 3] * t) + l * (binsL[3 * b] * (1 - t) + binsL[3 * b + 3] * t);
       out[3 * i + 1] += u * (binsU[3 * b + 1] * (1 - t) + binsU[3 * b + 4] * t) + l * (binsL[3 * b + 1] * (1 - t) + binsL[3 * b + 4] * t);
     }
+    // inside the lips' line: each loop a step further behind its lip's edge and towards its gum
+    // (the upper lip's up, the lower lip's down), so the opening is clear from edge to edge
+    for (const i of this.inner) {
+      const az = Math.abs(out[3 * i + 2]);
+      const depth = mesh.inside[i], share = this.share[i];
+      const eu = edge(d.lips.z, lips.upper, az), el = edge(d.lips.z, lips.lower, az);
+      const back = 0.85 * k * depth, away = 0.4 * k * depth;
+      out[3 * i] = (el.x - back) * (1 - share) + (eu.x - back) * share;
+      out[3 * i + 1] = (el.y - away) * (1 - share) + (eu.y + away) * share;
+    }
     return out;
   }
+}
+
+/**
+ * The lips' line the skin follows: the engine's, with the lips drawn off the teeth as the mouth
+ * opens wide. From an opening of 1.1 cm the upper lip uncovers the upper incisors' crowns, up to
+ * 9 mm of them (their gum line) at 2.4 cm and more, and the lower lip 4.5 mm of the lower ones;
+ * most on the midline, nothing at the corners. `k` is the body's scale.
+ */
+export function bared(d: Tract3dDisplay, k: number): { upper: { x: number; y: number }[]; lower: { x: number; y: number }[] } {
+  const { upper, lower } = d.lips;
+  const open = upper[0].y - lower[0].y;
+  const t = Math.min(1, Math.max(0, (open / k - 1.1) / 1.3));
+  const wide = t * t * (3 - 2 * t);
+  const tooth = (name: string) => d.outlines.find((o) => o.name === name)?.points[2];
+  const up = tooth("upperTeeth"), low = tooth("lowerTeeth");
+  if (wide <= 0 || !up || !low || open <= 0) return { upper, lower };
+  const lift = Math.max(0, up.y + 0.9 * k * wide - upper[0].y);
+  const drop = Math.max(0, lower[0].y - (low.y - 0.45 * k * wide));
+  const share = upper.map((u, i) => Math.pow(Math.max(0, (u.y - lower[i].y) / open), 0.6));
+  return {
+    upper: upper.map((u, i) => ({ x: u.x, y: u.y + lift * share[i] })),
+    lower: lower.map((l, i) => ({ x: l.x, y: l.y - drop * share[i] })),
+  };
 }
 
 /** a lip edge at lateral offset az (the engine samples it from the midline out) */

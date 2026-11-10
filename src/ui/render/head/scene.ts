@@ -75,6 +75,8 @@ export class HeadScene {
   readonly camera = new THREE.PerspectiveCamera(30, 1, 0.5, 600);
   private readonly clip = new THREE.Plane(new THREE.Vector3(0, 0, -1), 0);
   private readonly materials = new Map<string, THREE.MeshPhysicalMaterial>();
+  /** how far the light reaches into the mouth of a whole head: the lips' x, and what is left of the light deep inside (1: all of it) */
+  private readonly mouth = { uLipX: { value: 0 }, uDeep: { value: 1 } };
   private readonly parts: Part[] = [];
   private readonly env: THREE.Texture;
   private readonly key: THREE.DirectionalLight;
@@ -132,16 +134,32 @@ export class HeadScene {
     this.scene.add(rim);
 
     for (const [name, m] of Object.entries(MATERIALS)) {
-      this.materials.set(
-        name,
-        new THREE.MeshPhysicalMaterial({ color: m.color, roughness: m.roughness, metalness: 0, clearcoat: m.coat, clearcoatRoughness: 0.3, side: THREE.DoubleSide, envMapIntensity: 0.9, clipShadows: true, shadowSide: THREE.DoubleSide }),
-      );
+      const mat = new THREE.MeshPhysicalMaterial({ color: m.color, roughness: m.roughness, metalness: 0, clearcoat: m.coat, clearcoatRoughness: 0.3, side: THREE.DoubleSide, envMapIntensity: 0.9, clipShadows: true, shadowSide: THREE.DoubleSide });
+      // inside a whole head the light comes in through the lips and dies away towards the
+      // throat: the teeth stand lit at the front, the cavity behind the tongue is dark
+      mat.onBeforeCompile = (shader) => {
+        Object.assign(shader.uniforms, this.mouth);
+        shader.vertexShader = shader.vertexShader
+          .replace("#include <common>", "#include <common>\nvarying float vTractX;")
+          .replace("#include <project_vertex>", "#include <project_vertex>\nvTractX = ( modelMatrix * vec4( transformed, 1.0 ) ).x;");
+        shader.fragmentShader = shader.fragmentShader
+          .replace("#include <common>", "#include <common>\nuniform float uLipX;\nuniform float uDeep;\nvarying float vTractX;")
+          .replace("#include <tonemapping_fragment>", "gl_FragColor.rgb *= mix( 1.0, uDeep, smoothstep( 0.4, 5.0, uLipX - vTractX ) );\n#include <tonemapping_fragment>");
+      };
+      this.materials.set(name, mat);
     }
 
     // skin: colours per vertex; light that enters the skin comes back out red, so the edge of
     // every shadow is warm (a wrapped, tinted diffuse term) and the surface never looks like plastic
-    this.skinMat = new THREE.MeshPhysicalMaterial({ vertexColors: true, roughness: 0.56, metalness: 0, sheen: 0.18, sheenRoughness: 0.55, sheenColor: new THREE.Color(0xffc4b0), envMapIntensity: 0.8, clipShadows: true, shadowSide: THREE.DoubleSide });
+    // (a soft highlight on the brow, the nose and the cheekbones; the lips glossier than the skin)
+    this.skinMat = new THREE.MeshPhysicalMaterial({ vertexColors: true, roughness: 0.47, metalness: 0, sheen: 0.3, sheenRoughness: 0.5, sheenColor: new THREE.Color(0xffc4b0), clearcoat: 0.12, clearcoatRoughness: 0.45, envMapIntensity: 0.95, clipShadows: true, shadowSide: THREE.DoubleSide });
     this.skinMat.onBeforeCompile = (shader) => {
+      shader.vertexShader = shader.vertexShader
+        .replace("#include <common>", "#include <common>\nattribute float lip;\nvarying float vLip;")
+        .replace("#include <begin_vertex>", "#include <begin_vertex>\nvLip = lip;");
+      shader.fragmentShader = shader.fragmentShader
+        .replace("#include <common>", "#include <common>\nvarying float vLip;")
+        .replace("#include <roughnessmap_fragment>", "#include <roughnessmap_fragment>\nroughnessFactor *= mix( 1.0, 0.6, vLip );");
       const chunk = THREE.ShaderChunk.lights_physical_pars_fragment.replace(
         "vec3 irradiance = dotNL * directLight.color;",
         `float skinNL = dot( geometryNormal, directLight.direction );
@@ -191,12 +209,14 @@ export class HeadScene {
     // little shade in the eye sockets and in every crease (the nostrils, the ear's bowl, the
     // lids' line, the corners of the mouth); the stand in one tone
     const colors = new Float32Array(3 * n);
+    const gloss = new Float32Array(n);
     const hollow = hollows(rig.rest, mesh.indices, n, k);
     const g = (a: number, b: number, c = 0) => Math.exp(-(a * a + b * b + c * c));
     for (let i = 0; i < n; i++) {
       const x = rig.rest[3 * i] / k, y = rig.rest[3 * i + 1] / k, z = Math.abs(rig.rest[3 * i + 2]) / k;
       const t = Math.min(1, Math.max(0, (mesh.tint[i] - 0.3) / 0.5));
       const lip = t * t * (3 - 2 * t);
+      gloss[i] = mesh.stand[i] ? 0 : lip;
       const blush = Math.min(1, 0.5 * g((y - 11.6) / 1.7, (z - 4.3) / 1.5, (x - 4.5) / 2.6) + 0.4 * g((y - 11.2) / 1.0, z / 1.0, (x - 7.6) / 1.2) + 0.45 * g((y - 13.2) / 2.4, (z - 7.4) / 0.9, (x + 2.2) / 2.0) + 0.2 * g((y - 4.9) / 1.0, z / 1.4, (x - 7.0) / 1.2));
       const shade = Math.min(0.85, 0.35 * g((y - 15.4) / 0.9, (z - 3.1) / 1.3, (x - 6.2) / 1.6) + hollow[i]);
       for (let c = 0; c < 3; c++) {
@@ -208,6 +228,7 @@ export class HeadScene {
     }
     this.headGeo.setAttribute("position", new THREE.BufferAttribute(rig.out, 3).setUsage(THREE.DynamicDrawUsage));
     this.headGeo.setAttribute("color", new THREE.BufferAttribute(colors, 3));
+    this.headGeo.setAttribute("lip", new THREE.BufferAttribute(gloss, 1));
     this.headGeo.setIndex(new THREE.BufferAttribute(mesh.indices, 1));
     const b = sectionBounds(k);
     this.painter = new SectionPainter(b);
@@ -290,6 +311,8 @@ export class HeadScene {
       m.clippingPlanes = planes;
       m.envMapIntensity = closed ? 0.12 : 0.9;
     }
+    this.mouth.uLipX.value = view.display.lips.upper[0].x;
+    this.mouth.uDeep.value = closed ? 0.1 : 1;
     // the key's shadow frame: the head (or the tract alone), wherever the camera carries the light
     const reach = (withHead ? 21 : 9) * k;
     this.key.target.position.set((withHead ? -3.5 : 3) * k, (withHead ? 8 : 5.5) * k, 0);

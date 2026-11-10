@@ -16,6 +16,8 @@ export interface HeadMesh {
   upper: Float32Array;
   lower: Float32Array;
   tint: Float32Array;
+  /** 0…1 per vertex: how far inside the mouth it lies (0 on the lips' line and outside, 1 on the open rim) */
+  inside: Float32Array;
   /** triangles, outward-facing */
   indices: Uint32Array;
   /** the stand's vertices (they follow nothing and keep one colour) */
@@ -52,7 +54,7 @@ export function readHead(bytes: ArrayBuffer): Raw {
   if (dv.getUint32(0, true) !== 0x44414548) throw new Error("not a head mesh");
   const hl = dv.getUint32(4, true);
   const h = JSON.parse(new TextDecoder().decode(new Uint8Array(bytes, 8, hl))) as Header;
-  if (h.version !== 1) throw new Error(`head mesh version ${h.version}`);
+  if (h.version !== 2) throw new Error(`head mesh version ${h.version}`);
   let o = 8 + hl + ((4 - (hl % 4)) % 4);
   const take = (len: number) => {
     const s = bytes.slice(o, o + len);
@@ -66,7 +68,7 @@ export function readHead(bytes: ArrayBuffer): Raw {
     for (let i = 0; i < f.length; i++) f[i] = q[i] / 100;
     return f;
   });
-  const attrs = [0, 1, 2, 3].map(() => {
+  const attrs = [0, 1, 2, 3, 4].map(() => {
     const q = new Uint8Array(take(n));
     const f = new Float32Array(n);
     for (let i = 0; i < n; i++) f[i] = q[i] / 255;
@@ -195,7 +197,7 @@ export function buildHead(bytes: ArrayBuffer): HeadMesh {
   const raw = readHead(bytes);
   const s = subdivide(raw.polys, raw.n);
   const bodies = raw.bodies.map((b) => apply(s, b, 3));
-  const [jaw, upper, lower, tint] = raw.attrs.map((a) => apply(s, a, 1));
+  const [jaw, upper, lower, tint, inside] = raw.attrs.map((a) => apply(s, a, 1));
   const isStand = new Float32Array(raw.n);
   for (let i = raw.skin; i < raw.n; i++) isStand[i] = 1;
   const standF = apply(s, isStand, 1);
@@ -215,6 +217,7 @@ export function buildHead(bytes: ArrayBuffer): HeadMesh {
     upper,
     lower,
     tint,
+    inside,
     indices,
     stand,
     lipLine: { upper: Int32Array.from(up), lower: Int32Array.from(low) },

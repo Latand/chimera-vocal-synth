@@ -75,11 +75,31 @@ const macro = (sex: string, age: string, w: number): [string, number][] => [
   [`macrodetails/asian-${sex}-${age}`, w / 3],
   [`macrodetails/african-${sex}-${age}`, w / 3],
 ];
+/**
+ * The sculpt every body shares, from MakeHuman's own detail targets (the same CC0 set): a
+ * rounder, less tall skull with fuller temples, cheekbones and a brow that catch the light, a
+ * firm line under the jaw, and a slimmer neck. The macro shapes alone gave a tall, narrow
+ * cranium over flat cheeks and a neck as wide as the jaw: a mannequin's bust.
+ */
+const SCULPT: [string, number][] = [
+  ["head/head-round", 0.2],
+  ["head/head-scale-vert-decr", 0.3],
+  ["head/head-scale-horiz-incr", 0.25],
+  ["forehead/forehead-temple-incr", 0.6],
+  ["cheek/l-cheek-bones-incr", 0.6],
+  ["cheek/r-cheek-bones-incr", 0.6],
+  ["cheek/l-cheek-volume-decr", 0.5],
+  ["cheek/r-cheek-volume-decr", 0.5],
+  ["eyebrows/eyebrows-trans-forward", 0.2],
+  ["neck/neck-double-decr", 0.8],
+  ["neck/neck-scale-horiz-decr", 0.4],
+  ["neck/neck-scale-depth-decr", 0.3],
+];
 /** the three bodies the engine blends between (MakeHuman dm, its axes) */
 const BODIES: Record<string, Float64Array> = {
-  male: shape([...macro("male", "young", 1), ...EYES]),
-  female: shape([...macro("female", "young", 1), ...EYES]),
-  child: shape([...macro("male", "child", 0.5), ...macro("female", "child", 0.5), ...EYES]),
+  male: shape([...macro("male", "young", 1), ...SCULPT, ...EYES]),
+  female: shape([...macro("female", "young", 1), ...SCULPT, ...EYES]),
+  child: shape([...macro("male", "child", 0.5), ...macro("female", "child", 0.5), ...SCULPT, ...EYES]),
 };
 
 // ---------------------------------------------------------------- topology helpers
@@ -139,8 +159,8 @@ const V = {
   stomionLower: 493,
   /** the loop on the inside of the lips where the mouth is opened (the fourth inwards) */
   rimUpper: 571,
-  /** the loop round the base of the neck where the head is cut off */
-  neckFront: 1522,
+  /** the loop round the neck where the head is cut off: two loops above its base, before it widens into the shoulders */
+  neckFront: 815,
   noseTip: 297,
 };
 const lipLine = loop(V.stomionUpper);
@@ -223,7 +243,7 @@ const TILT = (8 * Math.PI) / 180;
 /** the engine's closed lips (template cm): x of the lips' edge at rest, the lips' line */
 const LIPS = { x: 6.95, y: 7.85 };
 /** the neck's front at the level of the glottis (y = 0), cm in front of it */
-const SKIN_FRONT = 2.15;
+const SKIN_FRONT = 1.95;
 /** the shift is complete below this height and fades out up to the jaw line */
 const NECK_FULL = 1.4, NECK_NONE = 4.4;
 const smooth = (a: number, b: number, x: number) => {
@@ -267,20 +287,23 @@ function register(mh: Float64Array): Registered {
 
 // ---------------------------------------------------------------- the stand
 /**
- * Rings below the neck's cut: down a short collar, out in a fillet to a disc, down its rim and in
- * to the centre of its underside. Every ring has the cut loop's vertex count, so the stand's
- * faces are quads but for the underside's fan.
+ * Rings below the neck's cut: the neck runs on down and out a little (as it does towards the
+ * shoulders), then stands on a cut with a bevelled edge: a short upright rim, the bevel, and
+ * the flat underside in to its centre. Every ring has the cut loop's vertex count, so the
+ * stand's faces are quads but for the underside's fan.
  */
 const STAND = [
-  // [drop below the collar's top (cm), growth of the radius (cm), blend towards a circle]
-  [0.5, 0.0, 0.15],
-  [1.1, 0.25, 0.4],
-  [1.5, 1.0, 0.7],
-  [1.7, 2.1, 0.9],
-  [1.85, 2.9, 1.0],
-  [2.5, 3.0, 1.0],
-  [3.1, 2.9, 1.0],
-  [3.2, 2.2, 1.0],
+  // [drop below the neck's cut (cm), growth of the radius (cm), blend towards an ellipse]
+  [0.7, 0.05, 0.1],
+  [1.5, 0.15, 0.2],
+  [2.3, 0.35, 0.3],
+  [3.0, 0.65, 0.4],
+  [3.5, 0.9, 0.45],
+  [3.62, 0.96, 0.45],
+  [5.0, 0.96, 0.45],
+  [5.12, 0.9, 0.45],
+  [5.4, 0.6, 0.45],
+  [5.4, 0.2, 0.45],
 ] as const;
 const neckKept = neck.map((i) => remap[i]);
 if (neckKept.some((i) => i < 0)) throw new Error("the neck loop left the head");
@@ -295,15 +318,24 @@ function stand(pos: Float64Array): Float64Array {
     top = Math.min(top, pos[3 * j + 1]);
   }
   for (const j of neckKept) r += Math.hypot(pos[3 * j] - cx, pos[3 * j + 2] - cz) / m;
+  // the cut loop's own half-extents: the stand's outline blends towards an ellipse of that shape
+  let ax = 0, az = 0;
+  for (const j of neckKept) {
+    ax = Math.max(ax, Math.abs(pos[3 * j] - cx));
+    az = Math.max(az, Math.abs(pos[3 * j + 2] - cz));
+  }
   STAND.forEach(([drop, grow, round], k) => {
     neckKept.forEach((j, i) => {
       const dx = pos[3 * j] - cx, dz = pos[3 * j + 2] - cz, d = Math.hypot(dx, dz) || 1;
-      const rad = d * (1 - round) + r * round + grow;
+      const ell = 1 / Math.hypot(dx / d / ax, dz / d / az);
+      const rad = d * (1 - round) + ell * round + grow;
       out[3 * (k * m + i)] = cx + (dx / d) * rad;
-      out[3 * (k * m + i) + 1] = top - drop;
+      // the neck's cut is not level: the rings come level over the first three
+      out[3 * (k * m + i) + 1] = top - drop + (pos[3 * j + 1] - top) * Math.max(0, 1 - (k + 1) / 3);
       out[3 * (k * m + i) + 2] = cz + (dz / d) * rad;
     });
   });
+  void r;
   out[3 * (nStand - 1)] = cx;
   out[3 * (nStand - 1) + 1] = top - STAND[STAND.length - 1][0];
   out[3 * (nStand - 1) + 2] = cz;
@@ -351,6 +383,11 @@ const attr = (src: Float64Array, max = 1): Uint8Array => {
 // the lips' colour: full over the vermilion (rings 0–4 and the inside), gone by ring 6
 const tint = new Float64Array(NV);
 for (let i = 0; i < NV; i++) tint[i] = ring[i] > 50 ? 0 : 1 - smooth(4, 6, ring[i]);
+// how far inside the mouth a vertex lies: 0 on the line where the lips meet and outside it,
+// 1 on the open rim (the fourth loop inwards). The runtime rolls these loops in behind the lips'
+// edges, so no skin hangs in the opening.
+const inside = new Float64Array(NV);
+for (let i = 0; i < NV; i++) inside[i] = ring[i] < 0 ? Math.min(1, -ring[i] / 4) : 0;
 const loops = {
   /** where the lips meet: upper lip's vertices then the lower lip's, each from the midline outwards to both corners */
   lipLine: lipLine.map((i) => remap[i]),
@@ -381,8 +418,8 @@ const loops = {
 
 // ---------------------------------------------------------------- write
 const header = {
-  version: 1,
-  source: "MakeHuman base mesh, macro targets, eye-closure targets and default skeleton weights (CC0 1.0)",
+  version: 2,
+  source: "MakeHuman base mesh, macro and detail targets, eye-closure targets and default skeleton weights (CC0 1.0)",
   vertices: N,
   skin: n0,
   bodies: Object.keys(bodies),
@@ -396,15 +433,18 @@ const polyData: number[] = [];
 for (const p of polys) polyData.push(p.length, ...p);
 const sections: Uint8Array[] = [
   ...Object.values(bodies).map((b) => {
-    // millimetre hundredths in 16 bits: ±327 cm
+    // millimetre hundredths in 16 bits: ±327 cm. Rounded away from zero on both sides, so a
+    // vertex and its mirror image keep the same size (Math.round sends −0.5 up and 0.5 up: one
+    // ear's vertex ended a hundredth of a millimetre nearer the midline than the other's)
     const q = new Int16Array(b.length);
-    for (let i = 0; i < b.length; i++) q[i] = Math.round(b[i] * 100);
+    for (let i = 0; i < b.length; i++) q[i] = Math.sign(b[i]) * Math.round(Math.abs(b[i]) * 100);
     return new Uint8Array(q.buffer);
   }),
   attr(wJaw),
   attr(wUpper),
   attr(wLower),
   attr(tint),
+  attr(inside),
   new Uint8Array(Uint16Array.from(polyData).buffer),
 ];
 const total = 8 + head.length + ((4 - (head.length % 4)) % 4) + sections.reduce((s, x) => s + x.length + ((4 - (x.length % 4)) % 4), 0);
