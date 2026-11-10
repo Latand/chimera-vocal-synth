@@ -139,7 +139,7 @@ pub fn derive_with(a: &HumanArtic, c: &[f64; 10]) -> ShapeParams {
     p.side_root = c[7] * (-a.root).max(0.);
     p.tip_width = 0.55 - 0.2 * curl;
     // spread lips nearly shut meet in a lens with pointed corners; opened, the same lips part in
-    // a rounded opening (the lower lip a U, not a V)
+    // a rounded opening (the lower lip a U; it was a V)
     p.lip_corner_shape = 2.0 - 0.7 * a.lip_width.clamp(0., 1.) + 0.9 * smoothstep(0.5, 1.8, a.lip_ap);
     // rounded lips: protruded and drawn together, the corners come in beyond the engine's own
     // narrowest opening
