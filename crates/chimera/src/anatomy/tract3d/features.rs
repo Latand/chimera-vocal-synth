@@ -140,10 +140,10 @@ pub fn check_one(m: &Tract3d, f: &Tract3dFrame, name: &str, shape: &ShapeParams,
                     let (a, b) = (rs[0], rs[1]);
                     let sep = ((a.min_z + a.max_z) - (b.min_z + b.max_z)).abs() * 0.5;
                     let (left, right) = if a.max_z < b.max_z { (a, b) } else { (b, a) };
-                    push("two lateral channels at the tip contact", format!("{} channels at s/L {:.2}, {:.2} cm apart", c.channels, c.s / l, sep), "2 channels, 2.0–2.8 cm apart (DVTD)", (c.channels as f64 - 2.).abs() * 0.3 + hinge(2.0 - sep) + hinge(sep - 2.8));
+                    push("two lateral channels at the tip contact", format!("{} channels at s/L {:.2}, {:.2} cm apart", c.channels, c.s / l, sep), "2 channels, 2.0–2.8 cm apart (encloses both DVTD speakers' /l/)", (c.channels as f64 - 2.).abs() * 0.3 + hinge(2.0 - sep) + hinge(sep - 2.8));
                     push("channel areas follow sideAsym", format!("right/left {:.2}/{:.2} cm² with sideAsym {:+.2}", right.area, left.area, shape.side_asym), "right > left when sideAsym > 0", if (right.area > left.area) == (shape.side_asym > 0.) { 0. } else { 0.1 });
                 }
-                None => push("two lateral channels at the tip contact", "no cut with the midline closed and two channels".into(), "2 channels, 2.0–2.8 cm apart (DVTD)", 1.),
+                None => push("two lateral channels at the tip contact", "no cut with the midline closed and two channels".into(), "2 channels, 2.0–2.8 cm apart (encloses both DVTD speakers' /l/)", 1.),
             }
         }
         "retroflex" => {
