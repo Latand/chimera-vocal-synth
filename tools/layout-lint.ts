@@ -276,8 +276,9 @@ async function main() {
   const duetDir = `${out}/duet-show`;
   if (duet) makeDuet(duetDir);
 
-  // WebGL through SwiftShader, for the 3D face
-  const browser = await chromium.launch({ headless: true, args: ["--autoplay-policy=no-user-gesture-required", "--use-angle=swiftshader", "--enable-unsafe-swiftshader"] });
+  // (no GL flags: headless Chromium draws WebGL as it is; forcing SwiftShader through ANGLE made
+  // a frame of the 3D head take seconds, and a click on the next mode then timed out)
+  const browser = await chromium.launch({ headless: true, args: ["--autoplay-policy=no-user-gesture-required"] });
   let errors = 0, warnings = 0, views = 0;
   for (const { w, h } of viewports) {
     const page = await browser.newPage({ viewport: { width: w, height: h }, deviceScaleFactor: 1 });
