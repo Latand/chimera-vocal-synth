@@ -36,8 +36,16 @@ bun tools/tract3d/capture.ts "$OUT/usc"
 "$CLI" tract3d walls "$OUT/walls"
 bun tools/tract3d/capture.ts "$OUT/acoustics"; bun tools/tract3d/capture.ts "$OUT/walls"
 
-# numbered frames of the lab's 3D view (tract, head whole / cut / see-through, uvula, larynx)
-bun tools/tract3d/lab-capture.ts http://127.0.0.1:4173/ "$OUT/frames"
+# the docs' table again from a finished validate run (errors only: nothing of the reference's own)
+"$CLI" tract3d table "$OUT/dvtd"
+
+# numbered frames of the 3D head and tract: the head whole from three sides, the open mouth,
+# the head cut open, the planes, every mode's face screen, the lab at desktop and phone width
+bun tools/tract3d/lab-capture.ts http://127.0.0.1:5318/ "$OUT/frames"
+
+# the head's skin mesh again from a MakeHuman checkout kept outside the repository (CC0 assets;
+# docs/tract3d/head-asset.md); --debug writes each body's midline over the tract
+bun tools/gen-head.ts /path/to/makehuman --debug "$OUT/head" --tract "$OUT/schwa.json"
 
 # the lab's geometry call in the browser (against `bun run preview`)
 bun tools/tract3d/browser-bench.ts http://127.0.0.1:4173/ "$OUT/browser.json"
@@ -55,10 +63,12 @@ bun tools/tract3d/browser-bench.ts http://127.0.0.1:4173/ "$OUT/browser.json"
    the tongue's width are fitted to /ə aː iː uː s l/ together, with those sounds' articulation
    refitted around them twice.
 3. **Every sound**: the *default* posture (the engine's own targets for the nearest symbol, the
-   3D shape from `derive`) and a *fitted* posture (13 articulators and 11 tongue parameters,
-   Nelder–Mead with two restarts). The objective is the area-function distance d plus the tract
-   length and cut proportions. Both are then measured by the reference pipeline on the model's
-   own voxels.
+   3D shape from `derive`) and a *fitted* posture (13 articulators, 11 tongue parameters and the
+   lips' rounding, Nelder–Mead with two restarts). The objective is the area-function distance d
+   plus the tract length, the cut proportions, a penalty for openings under 1.5 mm, and the
+   distance of F1–F3 from the reference's through the same 1D solver. A fit whose voxels have no
+   connected path is backed off towards its starting posture until they have one. Both are then
+   measured by the reference pipeline on the model's own voxels.
 4. **The fast slicer's own check** (T-consistency): the model's voxels cut along the fast
    slicer's centreline, cut by cut.
 5. **Per sound**: d (default, fitted), length and volume, F1–F3 of both area functions through the
@@ -69,7 +79,9 @@ bun tools/tract3d/browser-bench.ts http://127.0.0.1:4173/ "$OUT/browser.json"
 Outputs: `table.json`, `table.md`, `anatomy-*.json`, and per sound `NN-name.svg` (MRI cuts above
 model cuts at the same scale, the area functions, both midsagittal planes),
 `-reference.json`, `-fit.json`, `-fit-voxel.json`, `-posture.json`. These contain values derived
-from the datasets: they stay outside git. Only this project's error measurements go into
+from the datasets: they stay outside git. `table.md` alone is written for the repository: it
+holds this project's error measurements only (distances, resonance errors, and the constriction
+as a difference from the reference's), and goes into
 [validation-results.md](../../docs/tract3d/validation-results.md).
 
 An exit status of zero means the run finished; acceptance is in the numbers.

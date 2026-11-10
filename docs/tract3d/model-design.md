@@ -57,7 +57,7 @@ the code (`crates/chimera/src/anatomy/tract3d/`) is the reference.
 - **Regions.** A cut drops regions under 0.01 cm² (one-lamina slivers between a tongue margin
   and a tooth row, far below MRI resolution) from its area and channel count; the faded area
   keeps them for continuity.
-- **Parameters.** 40 (`params.rs`, one table for struct, JSON names, ranges and the lab's
+- **Parameters.** 40 at first, 41 with `lipRound` (§0.2) (`params.rs`, one table for struct, JSON names, ranges and the lab's
   controls). `toothGap` was dropped (interdental gaps are not modelled). `derive` maps the 17
   articulators as §5 says; its eight constants were fitted against DVTD once
   (validation-results.md) and the fit did not justify changing the starting values.
@@ -87,19 +87,9 @@ beneath the skin, for the uvula ("the small second tongue") in shape and sound, 
 frequencies that did not fit, and for the soft tissues' vibration. This lifts phase 1's
 no-sound-change fence for the acoustics; the voice still does not read the 3D tract.
 
-- **Head (lab).** `src/ui/render/head3d.ts`, display only: the face screen's head (profile.ts
-  outlines at the current articulation, anatomy3d.ts's cross-section tables, rounder in front),
-  with the brow ridge, eye sockets, cheekbones, closed eyelids, ears, the lips' colour round a
-  mouth opening between the engine's lip edges. Beneath the skin (0.2 cm): subcutaneous fat and a
-  muscle layer as nested closed surfaces with regional thicknesses (fat thin over scalp, forehead
-  and nose, thick in the cheeks and neck; muscle thick at the masseter, temporalis,
-  sternocleidomastoid and nuchal muscles, thin over the larynx), then the deep tissue. Bones and
-  cartilages: skull vault, brain, mandible (turned by the jaw), cervical vertebral bodies, hyoid,
-  thyroid cartilage, trachea. Cut away, each closed surface shows its cut face in its tissue's
-  colour (stencil parity), the tract's midsagittal air (the engine's outer and inner walls), the
-  nasal cavity and the trachea are holes in those faces so the tract behind shows, and the
-  tongue, soft and hard palate, teeth and epiglottis are drawn on the cut. The tract's elements
-  are shaded in tissue colours inside the head; without the head the lab looks as before.
+- **Head (lab).** A head with skin, subcutaneous fat, muscle, bones and cartilages round the
+  tract, cut open with its layers on the cut face. That first head (a loft of the face screen's
+  outline, `head3d.ts`) was replaced the next day: §0.2 describes the head as it is.
 - **Uvula and epiglottis.** Both were in the 3D model (the uvula as the soft palate's middle lobe,
   `uvulaLength`, `uvulaWidth`; the epiglottis plate with the valleculae). In the voice the soft
   palate with the uvula is now a vibrating membrane (`Membrane`, 5 cm² × k², 0.9 g/cm² plus the
@@ -123,6 +113,77 @@ no-sound-change fence for the acoustics; the voice still does not read the 3D tr
   vowels all`) so the vowels keep their target formants; the consonant table with it. The 2D
   model's resampling counts each section's two ends as half samples, so a closure reaching a
   section's edge shuts it continuously (the recalibrated /u/ found a 0.5 cm² flicker there).
+
+### 0.2 Integration (2026-11-10): one head and tract on every screen
+
+The operator's next directive, restated: the 3D tract everywhere and not only in the lab; sound
+in the lab (it could not be heard there); and realism inside and out, close to a reference
+picture of a sculpted head with an open mouth. The same day the operator ordered the work: the
+3D shapes first, then, in a lane of its own, the port that computes every human sound from the
+3D geometry. So this stage changes what is seen and how the fits are judged; **the voice still
+reads its 1D area law** (README, deferred).
+
+- **The skin** (`src/ui/render/head/`, display only). A mesh baked from the MakeHuman project's
+  CC0 base mesh ([head-asset.md](head-asset.md): source, licence, what the generator does):
+  three shapes (adult male, adult female, child) blended by the body's weights, eyes closed,
+  the mouth open at a loop inside the lips, on a stand. It is registered round the engine's
+  tract (the lips' meeting point on the engine's closed lips, the larynx inside the neck) and
+  takes the body's own template map, so it stays round the tract for any body. `rig.ts` moves
+  it with two things the engine reports (`Tract3d::display`): each vertex turns by its share of
+  the jaw's turn, and the line where the skin's lips meet is put on the engine's upper and
+  lower lip edges, the rest of each lip following by its weight. The opening seen from outside
+  is the opening the cuts measure.
+- **One scene** (`scene.ts`) for the lab, every human mode's face screen and the duet page:
+  the engine's element meshes shaded by material, the skin round them, and, opened, the cut
+  face. The look is judged by eye against the operator's reference picture (a pale sculpted
+  head on a stand, the open mouth dark inside): the skin has vertex colours (the lips' tint
+  held to the vermilion, a little warmth on the cheeks, nose, ears and chin, shade in every
+  crease by the mesh's own curvature), a wrapped red-tinted diffuse term and soft room light;
+  a key light that travels with the camera casts shadows, so the chin shades the neck and the
+  mouth is lit only where light reaches through the lips. See-through makes the skin
+  translucent round the tract (the material is compiled again when it is toggled: compiled
+  opaque it kept its alpha at 1).
+- **The cut face** (`section.ts`) is painted on a canvas mapped onto the cut: its air is the 3D
+  tract's own lamina at the plane, by the rule the cuts use (envelope, less the tissue
+  polygons, plus the pockets inside tissue), with every 3D parameter. Round it, inside the
+  skin's own midline outline: skin, fat and muscle bands, the skull with the brain, the
+  cervical spine and cord, the nasal cavity, the hard palate, the chin's bone, the hyoid, the
+  laryngeal cartilages and the trachea, and the engine's tongue, soft palate and teeth.
+  Thicknesses are typical adult values from anatomy texts; this is a drawing, not a measurement.
+- **Engine, display** (`mesh.rs`, `parts.rs`). Every drawn surface comes from the helper the
+  laminae are cut from: the fossae and valleculae are the laminae's ellipsoids, the pharyngeal
+  wall is the lamina's own polyline (`wall_point`), the epiglottis `epiglottis_at`. Each arch's
+  row is drawn as seven crowns a side (typical crown widths laid along the row), with the gum
+  over the necks and the floor of the mouth inside the lower arch; the incisors' crowns are
+  drawn half the row's thickness (the row reaches into the lip's polygon there). Triangles come
+  in groups by material. `pose` computes the midline and the element rules only (no laminae, no
+  cuts); `display(z)` gives the lips' meeting line, the jaw's pivot and turn, the lamina at z
+  as named polygons and the engine's midline outlines.
+- **Browser.** `tract3dView` runs `pose`, leaves all meshes' vertices in a float buffer
+  (`chimera_floats_ptr`) and returns their layout and `display` as JSON; triangles, lines and
+  groups come once per body (`topology: true`). The face screens call it only when the posture
+  changed.
+- **Lips.** `lipRound` (0…1, default 0): the opening's width × (1 − 0.65·lipRound), below the
+  engine's 1.1 cm floor. 41 parameters now.
+- **Cuts.** A cut's perimeter is its boundary's Euclidean length (it was a staircase, 28 % long
+  on a circle).
+- **Presets.** The bunched /ɹ/ is open (it shut the tract over 2 cm); its check asks for an
+  open path and a low tip.
+- **Lab.** Listening sits under the 3D view (Listen, Stop, Say with words or IPA) and a start
+  prompt starts the voice; a consonant posture is said between two vowels. A sagittal plane is
+  drawn in 3D at its lateral offset; whole planes are fitted in the CUT screen.
+- **Face screens.** 3D is the default view of Play, Speak, Sing and Beatbox, opened along the
+  midline ("Cut away" off shows the head whole); the flat midsagittal view keeps the handles.
+- **Cost in the browser** (production build, headless Chromium, 2026-11-10, the machine's load
+  average about 10–14; `tools/tract3d/browser-bench.ts`). `tract3dView`: median 1.3 ms, p95
+  1.4 ms (16.5 kB of JSON and 29 643 floats). The lab's `tract3d` call with the meshes: 7.6 ms
+  (857 kB of JSON; 9 881 vertices with the single crowns and gums, three times the reviewed
+  head's), 2.2 ms for a cut alone; target 16 ms. A screen's whole update for a posture (the
+  view call, the skin's rig, the normals) took 5–7 ms in a test page. The shadow pass's cost on
+  a phone's GPU is not measured; a screen renders only when its posture or camera changes.
+  The audio thread's load in `tools/e2e.ts` was 42 % and 41 % (desktop and phone viewport) on
+  one run and 50 % and 60 % on another under the heavier load; the reviewed head measured 41 %
+  and 42 %. The voice's code is unchanged in this stage.
 
 ## 1. Decisions in one screen
 
@@ -306,7 +367,7 @@ lateral walls inward until they meet beyond the half-width.
 | Parameter | Unit | Range | Start | Meaning |
 |---|---|---|---|---|
 | `pharynxWidthNaso` | cm | 0.8 … 2.2 | 1.5 *(fit)* | half-width, nasopharynx |
-| `pharynxWidthOro` | cm | 0.8 … 2.4 | 1.6 *(fit)* | half-width, oropharynx (observed full widths 2.5–4.4 cm in DVTD cuts) |
+| `pharynxWidthOro` | cm | 0.8 … 2.4 | 1.6 *(fit)* | half-width, oropharynx |
 | `pharynxWidthHypo` | cm | 0.8 … 2.4 | 1.5 *(fit)* | half-width, hypopharynx above the piriform fossae |
 | `pharynxShape` | — | 1.5 … 4 | 2.2 | superellipse exponent |
 | `lateralSqueeze` | — | 0 … 1 | 0 | medial movement of the lateral walls (pharyngeal constriction, sphincter) |

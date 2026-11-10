@@ -15,6 +15,17 @@ corrected; the walls of the voice's tract vibrate by tissue. What changed and th
 [model-design.md §0.1](model-design.md#01-operator-amendment-2026-11-09-head-uvula-low-frequencies-walls),
 [validation-results.md §7–8](validation-results.md#7-low-frequencies-the-engines-acoustics-against-dvtds-measured-prints).
 
+**Integration (2026-11-10).** The 3D tract is now what every human mode shows: Play, Speak,
+Sing, Beatbox and the duet's heads draw the engine's 3D tract inside a head whose skin is a
+mesh baked from an openly licensed (CC0) base mesh, moved by the live voice's jaw and lips; the
+lab is audible (Listen, Say, a start prompt); the review's findings on the geometry and the
+fits are answered, with what is still outside a pass line said in the results (four rounded
+vowels' F1, the male /y/ the furthest at +17 %). What changed: [model-design.md §0.2](model-design.md#02-integration-2026-11-10-one-head-and-tract-on-every-screen);
+the head's source and licence: [head-asset.md](head-asset.md); the numbers:
+[validation-results.md](validation-results.md). **The voice does not read the 3D tract yet**:
+by the operator's order of work the shapes came first, and the port that computes every human
+sound from the 3D geometry is the next lane (below, deferred).
+
 ## The requirement
 
 The operator's request (2026-11-09, in Ukrainian; the verbatim text is kept in the task record),
@@ -42,6 +53,7 @@ in the same app.
 | [model-design.md](model-design.md) | the elements and their parameters, mapping from today's articulators, cuts and area function, API, lab mode, phase 2 outline |
 | [validation-plan.md](validation-plan.md) | reference pipeline, metrics, tests and pass lines with their justification, evidence, critique |
 | [validation-results.md](validation-results.md) | the measured numbers against DVTD and USC, the feature checks, cost, and the critique |
+| [head-asset.md](head-asset.md) | the head's skin mesh: source, licence (CC0), what the generator does |
 
 ## Validation against the requirement
 
@@ -51,7 +63,7 @@ in the same app.
 | a far more flexible tongue: funnels, grooves | design §4.1: five stations of side elevation and groove depth, groove width and taper, asymmetry, tip width; presets for grooved, funnel, cupped, lateral, bunched and retroflex /ɹ/, flat |
 | researched in detail | research.md, reference-data.md: 27 sources, 6 datasets opened, 2 downloaded and measured |
 | check and critique of 3D cross-sections against real people | validation-plan.md: DVTD (2 speakers, 22 sounds) and USC (/ɹ/, 8 speakers); same pipeline both sides; pass lines from the data; written critique |
-| see the shape and hear the result | design §9: Lab mode (3D view, cuts, area function, parameters, the engine's sound for the posture) |
+| see the shape and hear the result | design §9 and §0.2: the 3D head and tract on every human mode's face screen; Lab mode (3D view, cuts, area function, parameters, Listen and Say for the posture) |
 | more faithful timbre, richest sound | phase 2 (design §10); phase 1 makes area and shape along the centreline computable from the 3D geometry and shows how it differs from what the engine uses today |
 
 ## Build plan (one lane)
@@ -92,9 +104,12 @@ before the headline set.
 
 ## Deferred — not currently justified
 
-- **Sound from the 3D geometry, the gesture records, the planner:** phase 2 by the operator's
-  decision. (The operator's amendment changed the voice's acoustics: walls, soft palate, losses
-  and inertances; the voice still uses its 1D area law.)
+- **Sound from the 3D geometry, the gesture records, the planner:** the next lane, by the
+  operator's order of work (2026-11-09: the 3D shapes first, then the port in which every human
+  sound is computed from the 3D geometry; design §10). Until then the voice uses its 1D area
+  law with the amendment's walls, soft palate, losses and inertances, and the lab's AREA screen
+  shows the difference between the two area functions. With it come the vowel and consonant
+  recalibration, the golden re-bless and the audio-thread benchmark of that change.
 - **The offline 3D wave solver and "precise render":** phase 2; phase 1 leaves `air()` and the
   voxelizer as hooks.
 - **The nasal cavity and sinuses in 3D:** not in the acceptance list; the 1D nasal branch stays.
@@ -108,14 +123,12 @@ before the headline set.
   quantitative part.
 - **Published area-function tables (1991–2008):** not obtainable here; add by hand later with
   table and page citations if wanted.
-- **Switching the face screen's 3D view to the engine's meshes:** a follow-up once the lab has
-  proven the meshes.
 - **Child anatomy beyond body scaling:** no child 3D reference was found.
-- **From the operator amendment (2026-11-09):** a 3D lip-rounding freedom (the fitted rounded
-  vowels' F1 errors in validation-results §1 come from the lip opening's width floor); walls
-  from the 3D geometry's own perimeter and tissue per cut (the voice reads regions of the 2D
-  frame); the uvula's flow-driven vibration (a uvular trill or snore, a source like the vocal
-  folds); a sculpted or scanned face (the head is a parametric loft of the face screen's outline).
+- **From the operator amendment (2026-11-09):** walls from the 3D geometry's own perimeter and
+  tissue per cut (the voice reads regions of the 2D frame); the uvula's flow-driven vibration
+  (a uvular trill or snore, a source like the vocal folds). Both belong with the sound's port.
+- **The head's look beyond the mesh:** a skin texture (pores, brows, lashes), eyes that open,
+  hair; the single crowns' cusps and the gums are drawn, not scanned.
 
 ## Notes
 
