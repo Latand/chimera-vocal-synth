@@ -44,9 +44,6 @@ pub const ARCH_DEPTH: f64 = 5.0;
 const OCCLUSAL_Y: f64 = 7.95;
 /// rise of the occlusal plane per cm towards the molars (curve of Spee, simplified)
 const SPEE: f64 = 0.05;
-/// lateral offsets (template cm) over which the tooth rows rise out of the roof/floor: the
-/// incisors at the midline are the engine's own outlines, the rows join them from the side
-const BAND_FADE: (f64, f64) = (0.25, 0.45);
 /// template x of the back of the upper dental arch
 const ARCH_DEPTH_BACK: f64 = UPPER_INCISOR_X - ARCH_DEPTH;
 /// The ring's outline across: flat behind over two thirds of its width, its corners rounded
@@ -122,9 +119,12 @@ impl Arch {
         let n = norm(v(da, self.depth));
         ((x, a), (n.x, n.y))
     }
-    /// crown thickness across the arch (template cm): incisors thin, molars thick
+    /// crown thickness across the arch (template cm): the incisors as thin as the engine's own
+    /// on the midline (3 mm), the molars 1 cm. (At 7 mm the incisors' rows could not begin at
+    /// the midline: they were left out within 2.5 mm of it and rose over the next 2 mm, and a
+    /// cut through the front teeth had a square slot between them.)
     pub fn tooth(u: f64) -> f64 {
-        lerp(0.7, 1.0, smoothstep(0., 0.5, u))
+        lerp(0.3, 1.0, smoothstep(0., 0.45, u))
     }
     pub fn back(&self) -> f64 {
         self.incisor_x - self.depth
@@ -752,7 +752,8 @@ impl Parts {
         // under the hard palate the tongue is a loaf: convex across its whole width, rounding
         // off to its core at the margins (a middle drawn flat gave every cut a straight floor).
         // In the soft tube it keeps its midline's level and its sides come out to the wall
-        let e = 1. + self.dloaf[i] * (superellipse(w, s.edge_round) - 1.);
+        // (each rule's powers only where the rule acts: the display asks for thousands of points)
+        let e = if self.dloaf[i] > 0. { 1. + self.dloaf[i] * (superellipse(w, s.edge_round) - 1.) } else { 1. };
         // raising (bracing, cupping) spreads from a quarter of the width; lowering (lateral
         // channels) stays at the margins, leaving a midline contact for /l/
         let rise = if self.dside[i] >= 0. { smoothstep(0.25, 0.8, w) } else { smoothstep(0.55, 0.95, w) };
@@ -760,7 +761,8 @@ impl Parts {
         let gw = self.dgw[i];
         let g = if z.abs() < gw { 0.5 + 0.5 * cos(PI * z / gw) } else { 0. };
         let lam = (e + (self.dside[i] * side - self.dgroove[i] * g) / th).clamp(0., 3.);
-        add(q, scale(n, th * (lam - 1.) + self.dclose[i] * self.closing(z.abs() / self.dtube[i])))
+        let close = if self.dclose[i] > 0. { self.dclose[i] * self.closing(z.abs() / self.dtube[i]) } else { 0. };
+        add(q, scale(n, th * (lam - 1.) + close))
     }
     /// how much of the tip lobe remains at lateral offset z (1: all of it)
     pub fn lobe_factor(&self, z: f64) -> f64 {
@@ -973,7 +975,7 @@ impl Parts {
     pub fn piriform_section(&self, side: f64, y: f64) -> Option<(f64, f64, f64, f64)> {
         let (top, height) = self.piriform_top();
         let u = (top - y) / height;
-        if !(0. ..1.).contains(&u) {
+        if !(0. ..1.).contains(&u) || self.shape.piriform_depth < 0.2 {
             return None;
         }
         let g = sqrt(1. - u * u);
@@ -1092,7 +1094,7 @@ impl Parts {
             x >= self.wall_point(self.bottom, z).x && x <= self.epiglottis_at(0., z).x
         };
         let (mut lo, mut hi) = (0., 5. * self.map.k);
-        for _ in 0..18 {
+        for _ in 0..13 {
             let mid = 0.5 * (lo + hi);
             if inside(mid) {
                 lo = mid;
@@ -1103,11 +1105,13 @@ impl Parts {
         lo
     }
     /// How far towards its gum line a tooth row's surface has rounded off at template x and
-    /// lateral offset `at` (template cm): 0 over the middle of the row, 1 at its lingual and
-    /// buccal edges and at its back end (behind the last molar).
+    /// lateral offset `at` (template cm): 0 over the middle of the row and out to its buccal
+    /// face (the cheek and the lips lie on that face: rounded off there, each row had a notch
+    /// of air between it and them), 1 at its lingual edge and at its back end (behind the last
+    /// molar).
     pub fn crown_round(&self, arch: &Arch, xt: f64, at: f64) -> f64 {
         let (inner, outer) = (arch.inner_at(xt), arch.outer_at(xt));
-        let across = if outer > inner + 1e-6 { ((at - inner) / (outer - inner)).clamp(0., 1.) * 2. - 1. } else { 0. };
+        let across = if outer > inner + 1e-6 { (((at - inner) / (outer - inner)).clamp(0., 1.) * 2. - 1.).min(0.) } else { 0. };
         let end = 1. - ((xt - arch.back()) / 0.45).clamp(0., 1.);
         1. - superellipse(across, 3.) * superellipse(end, 3.)
     }
@@ -1208,8 +1212,9 @@ impl Parts {
             t.push(v(first.x, -5. * k));
         }
         // ---- tooth rows beside the incisors
-        if at > BAND_FADE.0 {
-            let fade = 3. * (1. - smoothstep(BAND_FADE.0, BAND_FADE.1, at));
+        // (the midline's own lamina holds the engine's incisors; every other one the rows)
+        if at > 0.02 {
+            let fade = 0.;
             for (arch, slot, upper) in [(&self.upper, T_UPPER_TEETH, true), (&self.lower, T_LOWER_TEETH, false)] {
                 if at > arch.outer_max() {
                     continue;
@@ -1289,12 +1294,13 @@ impl Parts {
                 let section = |xt: f64| -> (f64, f64, f64) {
                     let (hi, lo) = (self.upper_occlusal(xt, -CUSP), self.lower_occlusal(xt, 0.));
                     let half = 0.5 * (hi.y - lo.y);
-                    let reach = (0.55 * k).min(1.6 * half);
+                    let reach = (0.45 * k).min(1.4 * half);
                     let inside = ((self.upper.outer_at(xt) * k).min(corner) - az).max(0.);
-                    let bulge = if half > 0. && inside < reach { sqrt(1. - inside / reach) } else { 0. };
-                    // rows under 2.4 mm apart hold no air: the cheek and the tongue's
+                    // (a blunt nose: a pointed one left a thin horn of air above and below it)
+                    let bulge = if half > 0. && inside < reach { 1. - pow(inside / reach, 2.5) } else { 0. };
+                    // rows under 4 mm apart hold no air: the cheek and the tongue's
                     // margin lie in the gap (it cut as a hair-thin wing on each side)
-                    let thin = 1. - smoothstep(0.12 * k, 0.3 * k, half);
+                    let thin = 1. - smoothstep(0.2 * k, 0.4 * k, half);
                     let h = if half > 0. { half * lerp(bulge, 1.05, thin) } else { 0. };
                     (self.map.p(xt, 8.).x, 0.5 * (hi.y + lo.y), h)
                 };
@@ -1365,7 +1371,8 @@ impl Parts {
         for (j, side) in [-1., 1.].iter().enumerate() {
             let (cx, cz, rx, rz) = (self.pir.0, side * self.pir.1, self.pir.2, s.piriform_width * k);
             let zz = (z - cz) / rz;
-            if zz.abs() < 1. {
+            // (a speaker without fossae to speak of: under 2 mm deep they are left out)
+            if zz.abs() < 1. && s.piriform_depth >= 0.2 {
                 let r = sqrt(1. - zz * zz);
                 let (top, height) = self.piriform_top();
                 let out = &mut l.air[AIR_PIRIFORM[j]];

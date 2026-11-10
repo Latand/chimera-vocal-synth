@@ -16,7 +16,7 @@ pub use cut::{Cut, Interval, Region, Row, BAND, BAND_Z, MAX_INTERVALS, MIN_REGIO
 use lamina::{area as poly_area, Lamina};
 pub use lamina::{AIR_PIRIFORM, AIR_VALLECULA};
 pub use features::{check_one, check_presets, groove_index, surface_groove, Check};
-pub use mesh::{ElementMesh, MeshGroup, TEETH_PER_SIDE};
+pub use mesh::{ElementMesh, MeshGroup, RING_COLS, RING_ROWS, TEETH_PER_SIDE};
 pub use params::{derive, derive_with, ParamSpec, ShapeParams, DERIVE, SPECS};
 pub use parts::{occlusal, Arch, Map, Parts, ARCH_DEPTH, CUSP};
 pub use presets::{posture, presets, Preset, PRESET_NAMES};

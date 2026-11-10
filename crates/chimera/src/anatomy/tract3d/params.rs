@@ -94,7 +94,7 @@ shape_params! {
     epiglottis_width, "epiglottisWidth", "larynx", "cm", 0.6, 1.4, 1.0, "Half-width of the epiglottis";
     epiglottis_curl, "epiglottisCurl", "larynx", "1/cm", 0.0, 1.0, 0.2, "Backward curl of the epiglottis' sides";
     ary_fold_height, "aryFoldHeight", "larynx", "cm", 0.0, 1.5, 0.3, "How far the aryepiglottic folds stand above the hypopharynx's floor, between the laryngeal inlet and each piriform fossa";
-    piriform_depth, "piriformDepth", "larynx", "cm", 1.0, 2.5, 1.8, "Depth of the piriform fossae below the hypopharynx's floor";
+    piriform_depth, "piriformDepth", "larynx", "cm", 0.1, 2.5, 1.8, "Depth of the piriform fossae below the hypopharynx's floor (under 0.2: none)";
     piriform_width, "piriformWidth", "larynx", "cm", 0.3, 1.0, 0.55, "Lateral radius of the piriform fossae at their opening";
     vallecula_depth, "valleculaDepth", "larynx", "cm", 0.3, 1.2, 0.8, "Depth of the valleculae below the epiglottis' tip";
     vallecula_width, "valleculaWidth", "larynx", "cm", 0.3, 1.0, 0.7, "Lateral radius of the valleculae (they end under the epiglottis' edge at the latest)";

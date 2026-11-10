@@ -263,6 +263,93 @@ is untouched; `git log` has the reasons and what was ruled out):
   1.8 ms per compute over the 16 presets, slowest 3.1 ms; the display meshes 0.8 ms for 9 972
   vertices. The ring's polygon and the pockets cost 0.3 ms over §0.2's 1.5 ms.
 
+### 0.4 Second slice fix (2026-11-10): the cuts' forms, the elements as organs, the head beside the picture
+
+The slice-critic's second round, from its own frames and its own DVTD run: every cut had a
+straight floor or a right-angle step, and against MRI the pharynx's cuts were upside down
+(MRI: flat and wide on the posterior wall, the belly towards the tongue; the model: a ring
+that bulged at the back over a tongue root flat across); the elements drawn alone were plates
+and open shells; the head still read as a mannequin. What answers each (the engine's sound is
+untouched; `git log` has the reasons and what was ruled out). Where this section and §0.3 or
+§4 disagree, this section is the model as built.
+
+- **A tube of soft walls** (`Parts::closing`). From the larynx to the back teeth the lumen
+  ends sideways in a taper: at lateral offset z a share `closing(|z| / W)` of the gap between
+  the tube's two walls is taken up, nothing on the midline and all of it from the tube's
+  half-width W on (`pharynxWidthHypo`, `-Oro`, `-Naso` by height; `lateralSqueeze` takes up to
+  half of it). The taper's outline is a superellipse whose exponent is `pharynxShape` (1.3
+  pointed in front, 2 half an ellipse, 4 a rounded rectangle). Which wall carries the taper
+  differs along the tube:
+  - **In the pharynx the posterior wall is flat** with round corners (the ring,
+    `Parts::ring_at`, a fixed outline: flat over two thirds of its width) **and the front wall
+    comes back to it**: the epiglottis and the folds beside it (`Parts::epiglottis_at`), and
+    the tongue's root and back. Each dorsal point of the tongue looks along its normal at
+    what it faces; where that is the posterior wall its sides come out to it
+    (`Parts::dclose`).
+  - **Under the soft palate the roof comes down to the tongue**: the faucial arches
+    (`Parts::varch`, straight down so the roof stays a graph over x), and the hard palate's
+    edge behind the back teeth comes down with the soft palate's root. The two pillar blocks
+    of §0.3 are gone. The tongue stays level across there.
+  - **Under the hard palate the tongue is a loaf**, convex across its whole width
+    (`Parts::dloaf`; the middle 70 % drawn flat gave every oral cut a straight floor), from
+    1.5 cm in front of the palate's back edge on and in front of the last lower molar.
+- **The tongue's front is round** seen from above: it keeps the blade's width and comes in to
+  `tipWidth` over the tip lobe as a quarter of an ellipse, so at rest it fills the lower arch.
+  It narrowed as a wedge from 1.75 to 0.55 cm, and the air beside it down to the floor of the
+  mouth was the "legs" under every cut of an open mouth. A lateral (`lateral` = 1) draws the
+  front in to the wedge again: the channels of /l/ pass beside it.
+- **The uvula is a lobe** of round section (`Parts::uvula_outline`, tissue of its own): it
+  hangs from the soft palate's oral surface just in front of its tip, straight down when the
+  soft palate is raised against the wall, along the soft palate when that hangs itself, and is
+  squashed where the tongue's back comes up to it. `uvulaLength` and `uvulaWidth` size it.
+- **Tooth rows are round in section**: from the gum line on the lingual side over the biting
+  surface, and at the row's back end (`Parts::crown_round`); the buccal face stays upright,
+  with the cheek and the lips on it. A row is as thin at the incisors as the engine's own
+  incisors (3 mm, 1 cm at the molars) and runs through to the midline: at 7 mm the incisors'
+  rows were left out within 2.5 mm of the midline, a square slot in every cut through the
+  front teeth. Rows under 4 mm apart hold no air.
+- **The cheek** lies on the upper row's buccal face above the mouth and on the lower row's
+  below it, where the jaw has carried that, and bulges in between the rows (a blunt nose) up
+  to half a centimetre inside the mouth's corner.
+- **The piriform fossae** are 1.03 cm³ each by default (0.85 of the lumen's depth there as
+  their front-to-back radius, 0.55 cm to either side); `piriformDepth` goes down to 0.1 cm
+  and under 0.2 cm there are none (one of the two DVTD speakers has next to none below the
+  hypopharynx's floor).
+- **Presets.** With a round tongue front the air of /s/, /ʃ/ and the retroflex /ɹ/ no longer
+  passes beside the tip, and all three presets closed. /s/ has a deeper groove, /ʃ/ and the
+  retroflex a lower tip, and their checks refuse a closure (0.05, 0.03 and 0.15 cm² at
+  least).
+- **Display** (`mesh.rs`, from the same helpers): the tongue is a closed body (its dorsal
+  surface over its own width, the tip lobe's underside, a belly from margin to margin through
+  the core, the root's end); the soft palate has its thickness (the oral surface the laminae
+  hold, the nasal one the engine's outline), its arches and the uvula's lobe, and lies
+  against the posterior wall when raised; the pharynx is a tube: the ring from the laryngeal
+  inlet up over the nasopharynx's roof (the engine's whole wall; no air of the oral tract lies
+  above the port), with its side walls in front of the ring's corners (the hypopharynx's
+  front wall beside the leaf, and the tongue's surface beyond the tongue's own body); the
+  hypopharynx's floor is one surface with the aryepiglottic folds on it and the fossae in it
+  (`Parts::floor_height`), and a web runs from the tube to each fossa below it; the
+  epiglottis is a leaf on a stalk a third as wide (`Parts::epiglottis_foot`); the cheeks turn
+  in over the gums and draw in behind the last molar; each crown follows the arch (straight
+  blocks of each tooth's own thickness stepped out from tooth to tooth); each arch's gum is
+  one surface across the midline. What bounds no air and is display only: the belly, the web,
+  the soft palate's nasal surface, the single crowns and the gums.
+- **The head** ([head-asset.md](head-asset.md)): a skull shorter behind the ears, a brow,
+  cheekbones and a chin that stand forward, fuller lips, the cheeks a little raised under eyes
+  pressed shut, lids over an eyeball, a neck no wider than 4.9 cm to either side that flares
+  into a wide low disc with bevelled edges; the jaw's weights spread over their neighbours
+  (the seam from ear to chin); skin of uneven tone with warmer cheeks, nose, ears and lids and
+  a softer, wider highlight; behind the lips' line the lining's colour; a pink tongue, and
+  light that reaches 1.6 cm into the mouth before it fades; the cheeks' inner surfaces drawn
+  inside a whole head (they are the mouth's side walls).
+- **Lab.** The sagittal plane is drawn on the 1 cm grid with a joined outline, like the other
+  three planes. The along-tract readout says "on the bend (this cut overlaps the next)".
+  `chimera tract3d cut <preset> coronal:<x>` and `axial:<y>` draw a whole plane with every
+  tissue polygon's span under the air.
+- **The fit** weighs the cuts' proportions three times as much as it did (0.15 for a cut
+  twice too wide at all six stations; at 0.05 it all but ignored them).
+- **Cost.** In [validation-results.md §4](validation-results.md#4-cost).
+
 ## 1. Decisions in one screen
 
 1. **Geometry lives in the Rust engine**, a new module `chimera::anatomy::tract3d`, reached by

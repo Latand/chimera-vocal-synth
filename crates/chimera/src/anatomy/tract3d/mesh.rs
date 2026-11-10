@@ -117,6 +117,9 @@ fn along(poly: &[Vec2], t: f64) -> (usize, f64) {
 const UPPER_CROWNS: [f64; 7] = [0.86, 0.66, 0.76, 0.70, 0.66, 1.00, 0.95];
 const LOWER_CROWNS: [f64; 7] = [0.54, 0.59, 0.69, 0.70, 0.71, 1.10, 1.03];
 pub const TEETH_PER_SIDE: usize = 7;
+/// The pharyngeal ring's grid: rows from the laryngeal inlet to the nasopharynx's roof, columns across.
+pub const RING_ROWS: usize = 30;
+pub const RING_COLS: usize = 21;
 /// How much of the soft tube's half-width the tongue's own body is drawn over.
 const TONGUE_IN_TUBE: f64 = 0.72;
 const TOOTH_RINGS: usize = 7;
@@ -159,11 +162,10 @@ fn tooth_spans(arch: &Arch, widths: &[f64; TEETH_PER_SIDE]) -> [(f64, f64); TEET
     }
     out
 }
-/// How much of the row's thickness a crown is drawn with: the row the laminae hold is 7 mm
-/// thick at the incisors and reaches into the lip there (the union with the lip's polygon is
-/// the same tissue); an incisor's crown is half that, standing on the row's lingual side.
-fn drawn(u: f64) -> f64 {
-    lerp(0.5, 1., smoothstep(0.08, 0.45, u))
+/// How much of the row's thickness a crown is drawn with: all of it (the rows the laminae hold
+/// are as thin at the incisors as the crowns are).
+fn drawn(_u: f64) -> f64 {
+    1.
 }
 /// crown height above the gum (template cm) at depth fraction u, as the palate's gum line has it
 fn crown(u: f64) -> f64 {
@@ -208,14 +210,28 @@ fn tooth(m: &mut ElementMesh, p: &Parts, arch: &Arch, upper: bool, side: f64, sp
     };
     // a point of the crown: `a` along the row (−1 mesial … 1 distal), `b` across it (−1 the
     // lingual face … 1 the buccal one)
+    // the row's frame at nine places along the tooth, once (the arch's curve is two powers a
+    // point; every vertex asking for its own made the teeth three quarters of the meshes' time):
+    // (lingual edge x, lateral; normal x, lateral; thickness; crown height)
+    const FRAMES: usize = 9;
     // (the arch's own curve begins 1.4 mm off the midline; the first crown begins on it)
     let off = if span.0 <= 0. { arch_point(arch, 0., 0.).1 } else { 0. };
-    let at = |a: f64, b: f64, v: f64| -> [f64; 3] {
-        let f = 0.5 * (a + 1.);
+    let mut frames = [[0.; 6]; FRAMES];
+    for (i, frame) in frames.iter_mut().enumerate() {
+        let f = i as f64 / (FRAMES - 1) as f64;
         let u = along(f).max(0.);
-        let (xt, lat) = arch_point(arch, u, 0.5 * drawn(u) * (1. + b));
-        let lat = lat - off * (1. - f).clamp(0., 1.);
-        let h = crown(u);
+        let ((x, lat), (nx, na)) = arch.frame(u);
+        *frame = [x, lat - off * (1. - f), nx, na, Arch::tooth(u) * drawn(u), crown(u)];
+    }
+    // a point of the crown: `a` along the row (−1 mesial … 1 distal), `b` across it (−1 the
+    // lingual face … 1 the buccal one)
+    let at = |a: f64, b: f64, v: f64| -> [f64; 3] {
+        let q = (0.5 * (a + 1.)).clamp(0., 1.) * (FRAMES - 1) as f64;
+        let i = (q as usize).min(FRAMES - 2);
+        let t = q - i as f64;
+        let g = |j: usize| lerp(frames[i][j], frames[i + 1][j], t);
+        let across = 0.5 * g(4) * (1. + b);
+        let (xt, lat, h) = (g(0) + across * g(2), g(1) + across * g(3), g(5));
         let q = if upper { p.upper_occlusal(xt, v * (h + CUSP) - CUSP) } else { p.lower_occlusal(xt, v * h) };
         [q.x, q.y, side * lat.max(0.) * k]
     };
@@ -419,12 +435,12 @@ pub fn meshes(p: &Parts) -> Vec<ElementMesh> {
         m.material("pharynx");
         let y0 = p.bottom;
         let y1 = p.full_wall[p.full_wall.len() - 1].y;
-        m.grid(34, 25, 2, 2, |r, c| {
+        m.grid(RING_ROWS, RING_COLS, 2, 2, |r, c| {
             // (rows closer together towards the roof, where the wall turns forward)
-            let t = r as f64 / 33.;
+            let t = r as f64 / (RING_ROWS - 1) as f64;
             let y = lerp(y0, y1, 1. - pow(1. - t, 1.7));
             // (columns closer together towards the ring's sides, where it turns forward)
-            let w = 0.985 * sin(0.5 * PI * (c as f64 / 24. * 2. - 1.));
+            let w = 0.985 * sin(0.5 * PI * (c as f64 / (RING_COLS - 1) as f64 * 2. - 1.));
             let z = w * p.pharynx_width(y);
             p3(p.wall_point(y, z), z)
         });
@@ -493,11 +509,18 @@ pub fn meshes(p: &Parts) -> Vec<ElementMesh> {
         // the fossae are one surface
         {
             let (cx, a, b) = p.tube_at((p.bottom - p.glottis.y) / p.epi_len);
-            m.grid(9, 49, 0, 0, |r, c| {
-                let th = c as f64 / 48. * 2. * PI;
+            // (each spoke's two ends once: the reach is a search)
+            const SPOKES: usize = 37;
+            let mut spokes = [(0., 0., 0., 0.); SPOKES];
+            for (c, spoke) in spokes.iter_mut().enumerate() {
+                let th = c as f64 / (SPOKES - 1) as f64 * 2. * PI;
                 let (dx, dz) = (cos(th), sin(th));
                 let rim = 1. / sqrt((dx / a) * (dx / a) + (dz / b) * (dz / b));
-                let t = lerp(rim, p.floor_reach(cx, dx, dz).max(rim), r as f64 / 8.);
+                *spoke = (dx, dz, rim, p.floor_reach(cx, dx, dz).max(rim));
+            }
+            m.grid(7, SPOKES, 0, 0, |r, c| {
+                let (dx, dz, rim, reach) = spokes[c];
+                let t = lerp(rim, reach, r as f64 / 6.);
                 let (x, z) = (cx + t * dx, t * dz);
                 [x, if r == 0 { p.bottom } else { p.floor_height(x, z) }, z]
             });

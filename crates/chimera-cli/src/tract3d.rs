@@ -179,6 +179,10 @@ const RESOLVED: f64 = 0.15;
 /// Weight of the resonance term in the fit's objective: a 10 % error of one resonance costs as
 /// much as 0.08 of area-function distance.
 const RESONANCE_WEIGHT: f64 = 0.8;
+/// Weight of the cuts' proportions in the fit's objective: a cut twice too wide for its depth at
+/// every one of the six stations costs as much as 0.15 of area-function distance. (At 0.05 the
+/// fit all but ignored the cuts' shape: it could not have used a geometry that had the shapes.)
+const SHAPE_WEIGHT: f64 = 0.15;
 /// Fast objective: area-function distance, tract length and cut proportions at six stations,
 /// a penalty for openings the voxel pipeline cannot resolve (closed or thinner than 1.5 mm), and
 /// the distance of F1–F3 from the reference's (both through the same 1D solver). The area
@@ -206,7 +210,7 @@ fn objective(f: &Tract3dFrame, r: &Measurement, rs: &[f64], ra: &[f64], peaks: &
         // a resonance the model's area function lacks counts as one 35 % off
         resonance = peaks.iter().enumerate().map(|(i, p)| own.get(i).map_or(0.3, |q| (q / p).ln().abs())).sum();
     }
-    d + 1.5 * length + 0.05 * shape / 6. + 0.5 * unresolved + resonance_weight * resonance
+    d + 1.5 * length + SHAPE_WEIGHT * shape / 6. + 0.5 * unresolved + resonance_weight * resonance
 }
 /// The posture a share `t` of the way from `a` to `b`, over the articulators and 3D parameters
 /// the per-sound fit moves.

@@ -292,9 +292,9 @@ fn drawn_side_cavities_and_walls_are_the_sliced_geometry() {
                 }
             }
             // the pharyngeal wall's mesh lies on the laminae's own ring, at any lateral offset
-            // (its first grid, 34 × 25; the tube's side walls follow it)
+            // (its first grid; the tube's side walls follow it)
             let wall = &m.meshes()[3];
-            for j in 0..34 * 25 {
+            for j in 0..chimera::anatomy::tract3d::RING_ROWS * chimera::anatomy::tract3d::RING_COLS {
                 let (x, y, z) = (wall.positions[3 * j] as f64, wall.positions[3 * j + 1] as f64, wall.positions[3 * j + 2] as f64);
                 // (at the very edge the corner's profile is vertical: single precision moves it)
                 if z.abs() > 0.9 * pa.pharynx_width(y) {
@@ -554,13 +554,13 @@ fn the_tongue_fills_the_lower_arch_the_cheek_follows_the_lower_teeth_and_the_cro
         }
     }
     assert!(checked >= 9, "{checked} points behind the mouth's corners");
-    // a row's surface: at its gum line on both edges and behind its last tooth, a crown's height
-    // out along its middle
+    // a row's surface: at its gum line on its lingual edge and behind its last tooth, a crown's
+    // height out along its middle and on to its buccal face (the cheek lies on that)
     let pa = &m.parts;
     for arch in [&pa.upper, &pa.lower] {
         let xt = arch.incisor_x - 0.6 * arch.depth;
         let (inner, outer) = (arch.inner_at(xt), arch.outer_at(xt));
-        assert!(pa.crown_round(arch, xt, inner) > 0.999 && pa.crown_round(arch, xt, outer) > 0.999);
+        assert!(pa.crown_round(arch, xt, inner) > 0.999 && pa.crown_round(arch, xt, outer) < 1e-9);
         assert!(pa.crown_round(arch, xt, 0.5 * (inner + outer)) < 1e-9);
         assert!(pa.crown_round(arch, arch.back(), 0.5 * (inner + outer)) > 0.999);
         // rounded, not chamfered: a quarter of the way across, four fifths of the crown stand

@@ -14,6 +14,7 @@ OUT=/somewhere/outside/the/repo
 "$CLI" tract3d sheet s "$OUT/s.svg"
 "$CLI" tract3d model retroflex "$OUT/retroflex.json"
 "$CLI" tract3d cut l 14.0 "$OUT/l-cut.svg"        # one cut, large, coloured by tissue
+"$CLI" tract3d cut a coronal:4.5 "$OUT/a-coronal.svg"   # a whole plane the same way (axial:<y> too)
 "$CLI" tract3d presets "$OUT/presets"             # every preset's drawing + the feature checks
 "$CLI" tract3d tune s                             # move a preset until its feature checks pass
 "$CLI" tract3d benchmark                          # compute and mesh time
