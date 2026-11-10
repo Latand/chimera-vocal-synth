@@ -246,7 +246,7 @@ Visual classification of the 8 sustained /ɹ/ (1.56 mm images, judged by eye):
 large front cavity), 2 with the tip and blade raised over an air pocket under the tongue, 1
 unclear. Both kinds occur, as the literature reports
 ([doi:10.1121/1.2902168](https://doi.org/10.1121/1.2902168)). The bunched preset shows what the
-bunched speakers show (two constrictions, tip low, front cavity of 10.4 cm³, root drawn back); the
+bunched speakers show (two constrictions with the tract open between and through them, tip low, front cavity of 14.6 cm³, root drawn back); the
 retroflex preset what the tip-up speakers show (air under the tip, the constriction at the
 curled tip). Not established: where each speaker's constriction lies (needs registration of the
 incisors and palate), the coronal outline of the tongue body in /ɹ/, and any area.

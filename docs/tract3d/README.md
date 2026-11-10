@@ -128,7 +128,7 @@ before the headline set.
   tissue per cut (the voice reads regions of the 2D frame); the uvula's flow-driven vibration
   (a uvular trill or snore, a source like the vocal folds). Both belong with the sound's port.
 - **The head's look beyond the mesh:** a skin texture (pores, brows, lashes), eyes that open,
-  hair; the single crowns' cusps and the gums are drawn, not scanned.
+  hair; the single crowns' cusps and the gums are drawn by rule (no scan stands behind them).
 
 ## Notes
 

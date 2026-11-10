@@ -149,7 +149,8 @@ reads its 1D area law** (README, deferred).
   skin's own midline outline: skin, fat and muscle bands, the skull with the brain, the
   cervical spine and cord, the nasal cavity, the hard palate, the chin's bone, the hyoid, the
   laryngeal cartilages and the trachea, and the engine's tongue, soft palate and teeth.
-  Thicknesses are typical adult values from anatomy texts; this is a drawing, not a measurement.
+  Thicknesses are typical adult values from anatomy texts: the cut face is a drawing and
+  measures nothing.
 - **Engine, display** (`mesh.rs`, `parts.rs`). Every drawn surface comes from the helper the
   laminae are cut from: the fossae and valleculae are the laminae's ellipsoids, the pharyngeal
   wall is the lamina's own polyline (`wall_point`), the epiglottis `epiglottis_at`. Each arch's
