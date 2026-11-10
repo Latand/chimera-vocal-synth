@@ -205,8 +205,9 @@ export class HeadRig {
 
 /**
  * The lips' line the skin follows: the engine's, with the lips drawn off the teeth as the mouth
- * opens wide. From an opening of 1.1 cm the upper lip uncovers the upper incisors' crowns, up to
- * 9 mm of them (their gum line) at 2.4 cm and more, and the lower lip 4.5 mm of the lower ones;
+ * opens wide. From an opening of 1.1 cm the upper lip uncovers the upper incisors' crowns, at
+ * 2.4 cm and more all 10 mm of them and 1.5 mm of the gum above (at 9 mm the gum stayed under
+ * the lip, and a mouth opened that wide shows it), and the lower lip 4.5 mm of the lower ones;
  * most on the midline, nothing at the corners. `k` is the body's scale.
  */
 export function bared(d: Tract3dDisplay, k: number): { upper: { x: number; y: number }[]; lower: { x: number; y: number }[] } {
@@ -217,7 +218,7 @@ export function bared(d: Tract3dDisplay, k: number): { upper: { x: number; y: nu
   const tooth = (name: string) => d.outlines.find((o) => o.name === name)?.points[2];
   const up = tooth("upperTeeth"), low = tooth("lowerTeeth");
   if (wide <= 0 || !up || !low || open <= 0) return { upper, lower };
-  const lift = Math.max(0, up.y + 0.9 * k * wide - upper[0].y);
+  const lift = Math.max(0, up.y + 1.15 * k * wide - upper[0].y);
   const drop = Math.max(0, lower[0].y - (low.y - 0.45 * k * wide));
   const share = upper.map((u, i) => Math.pow(Math.max(0, (u.y - lower[i].y) / open), 0.6));
   return {

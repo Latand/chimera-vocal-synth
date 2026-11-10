@@ -143,14 +143,16 @@ before the headline set.
   (a uvular trill or snore, a source like the vocal folds). Both belong with the sound's port.
 - **The head's look beyond the mesh:** a skin texture (pores, brows, lashes), eyes that open,
   hair; the single crowns' cusps and the gums are drawn by rule (no scan stands behind them).
-- **From the slice fix (2026-11-10), what would bring the cut shape to the two speakers' own
-  difference:** rounded ends where the pharynx's ring meets the tongue (the lumen ends in
-  thin tips), tooth rows with rounded crowns in the laminae and incisors without the steps
-  beside the midline, a lip tube that ends on the lips' own curve, and a laryngeal inlet as
-  long front to back as a real one (the engine's larynx leaves less room, so the tube's rim
-  and the fossae beside it stand too wide). The last needs the midline, which is the
-  engine's: it belongs with the sound's port. Also not drawn in 3D: the aryepiglottic folds'
-  ridges and the faucial pillars (they are in the cuts).
+- **From the two slice fixes (2026-11-10), what still stands between the cuts and MRI.** Done
+  in the second: tooth rows round in section and incisors through the midline, a lumen that
+  ends sideways in a taper, the folds, the arches and the uvula drawn in 3D
+  ([model-design.md §0.4](model-design.md)). Left: a lip tube that ends on the lips' own
+  curve (it ends on a plane just in front of them); the cut through the front teeth, which
+  runs along the rows' faces and keeps their straight edges; and a lower pharynx as deep
+  front to back as one of the two DVTD speakers has (the engine's larynx and epiglottis leave
+  less room, so his fit takes the width instead and the cut at the hypopharynx's floor is too
+  wide for its depth). The last needs the midline, which is the engine's: it belongs with the
+  sound's port.
 
 ## Notes
 

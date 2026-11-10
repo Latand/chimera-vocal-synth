@@ -167,12 +167,12 @@ test("the skin follows the engine's jaw and lips", () => {
     expect(Math.abs(open.skin - (shown.upper[0].y - shown.lower[0].y))).toBeLessThan(0.08);
     const corner = shown.upper.length - 1;
     expect(shown.upper[corner]).toEqual(open.view.display.lips.upper[corner]);
-    // at its widest the upper lip stands at the upper incisors' gum line, the lower lip under
-    // the lower incisors' crowns
+    // at its widest the upper lip stands above the upper incisors' gum line (their crowns are
+    // 1 cm: a strip of gum shows), the lower lip under the lower incisors' crowns
     const wideOpen = api.tract3dView(model, { ...api.NEUTRAL, jaw: 2.6, lipAp: 2.4, lipWidth: 1 }).display;
     const teeth = (name: string) => wideOpen.outlines.find((o) => o.name === name)!.points[2];
     const wide = bared(wideOpen, 1);
-    expect(wide.upper[0].y - teeth("upperTeeth").y).toBeGreaterThan(0.85);
+    expect(wide.upper[0].y - teeth("upperTeeth").y).toBeGreaterThan(1.05);
     expect(teeth("lowerTeeth").y - wide.lower[0].y).toBeGreaterThan(0.4);
     // inside the lips' line nothing hangs in the opening: every such vertex lies behind its
     // lip's edge and outside the opening's height there

@@ -563,7 +563,8 @@ fn the_tongue_fills_the_lower_arch_the_cheek_follows_the_lower_teeth_and_the_cro
         assert!(pa.crown_round(arch, xt, inner) > 0.999 && pa.crown_round(arch, xt, outer) < 1e-9);
         assert!(pa.crown_round(arch, xt, 0.5 * (inner + outer)) < 1e-9);
         assert!(pa.crown_round(arch, arch.back(), 0.5 * (inner + outer)) > 0.999);
-        // rounded, not chamfered: a quarter of the way across, four fifths of the crown stand
+        // a rounded shoulder (a chamfer would stand half-way here): a quarter of the way across the
+        // row, four fifths of the crown stand
         assert!(pa.crown_round(arch, xt, inner + 0.25 * (outer - inner)) < 0.2);
     }
 }

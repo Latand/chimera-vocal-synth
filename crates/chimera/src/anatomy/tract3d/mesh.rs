@@ -5,7 +5,10 @@
 //!
 //! What is display only, beyond the cut geometry: the single crowns of the teeth (the laminae
 //! hold each arch as one row between the same lingual and buccal edges, from the same occlusal
-//! surface), the gums over the roots, and the floor of the mouth under the tongue's margins.
+//! surface), the gums over the roots, the floor of the mouth under the tongue's margins, the
+//! tongue's belly and the end of its root (inside the tongue's tissue), the web between the
+//! laryngeal tube and each fossa, and the soft palate's nasal surface (the engine's outline: no
+//! air of the oral tract lies above it). None of them bounds air.
 use super::parts::{self, Arch, Parts, CUSP};
 use super::*;
 
@@ -162,11 +165,6 @@ fn tooth_spans(arch: &Arch, widths: &[f64; TEETH_PER_SIDE]) -> [(f64, f64); TEET
     }
     out
 }
-/// How much of the row's thickness a crown is drawn with: all of it (the rows the laminae hold
-/// are as thin at the incisors as the crowns are).
-fn drawn(_u: f64) -> f64 {
-    1.
-}
 /// crown height above the gum (template cm) at depth fraction u, as the palate's gum line has it
 fn crown(u: f64) -> f64 {
     lerp(1.0, 0.75, smoothstep(0., 0.5, u))
@@ -184,7 +182,7 @@ fn tooth(m: &mut ElementMesh, p: &Parts, arch: &Arch, upper: bool, side: f64, sp
     // (the arch runs almost sideways at the incisors, where the depth fraction is no measure of length)
     const N: usize = 6;
     let mut len = [0.; N + 1];
-    let mid = |u: f64| arch_point(arch, u, 0.5 * drawn(u));
+    let mid = |u: f64| arch_point(arch, u, 0.5);
     let mut prev = mid(span.0);
     for i in 1..=N {
         let q = mid(lerp(span.0, span.1, i as f64 / N as f64));
@@ -221,7 +219,7 @@ fn tooth(m: &mut ElementMesh, p: &Parts, arch: &Arch, upper: bool, side: f64, sp
         let f = i as f64 / (FRAMES - 1) as f64;
         let u = along(f).max(0.);
         let ((x, lat), (nx, na)) = arch.frame(u);
-        *frame = [x, lat - off * (1. - f), nx, na, Arch::tooth(u) * drawn(u), crown(u)];
+        *frame = [x, lat - off * (1. - f), nx, na, Arch::tooth(u), crown(u)];
     }
     // a point of the crown: `a` along the row (−1 mesial … 1 distal), `b` across it (−1 the
     // lingual face … 1 the buccal one)
@@ -263,7 +261,7 @@ fn gum(m: &mut ElementMesh, p: &Parts, arch: &Arch, upper: bool, spans: &[(f64, 
     let k = p.map.k;
     let half = TEETH_PER_SIDE * PER;
     // across the band: (position across the row, height as crown fractions from the edge, extra cm)
-    // (positions across the drawn crown: 0 its lingual face, 1 its buccal face)
+    // (positions across the row: 0 its lingual face, 1 its buccal face)
     let cols: [(f64, f64, f64); 8] = [(-0.42, 1.0, 0.5), (-0.1, 1.0, 0.12), (0.06, 0.84, 0.0), (0.3, 0.96, 0.0), (0.7, 0.96, 0.0), (0.94, 0.84, 0.0), (1.08, 1.0, 0.14), (1.14, 1.0, 0.7)];
     m.grid(2 * half + 1, cols.len(), 0, 0, |r, c| {
         // rows run from the left side's last molar through the midline to the right side's
@@ -277,7 +275,7 @@ fn gum(m: &mut ElementMesh, p: &Parts, arch: &Arch, upper: bool, spans: &[(f64, 
         let extra = if upper { extra } else { 0.45 * extra };
         // the margin (columns 2 and 5) dips at each tooth's middle and rises to a papilla between
         let margin = if c == 2 || c == 5 { -0.13 * sin(PI * f) } else { 0. };
-        let (xt, mut lat) = arch_point(arch, u, b * drawn(u));
+        let (xt, mut lat) = arch_point(arch, u, b);
         if r == 0 {
             lat = 0.;
         }

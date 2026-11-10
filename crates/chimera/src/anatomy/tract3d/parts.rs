@@ -1211,10 +1211,9 @@ impl Parts {
             let first = t[0];
             t.push(v(first.x, -5. * k));
         }
-        // ---- tooth rows beside the incisors
-        // (the midline's own lamina holds the engine's incisors; every other one the rows)
+        // ---- tooth rows (the midline's own lamina holds the engine's incisors; every other one
+        // the rows)
         if at > 0.02 {
-            let fade = 0.;
             for (arch, slot, upper) in [(&self.upper, T_UPPER_TEETH, true), (&self.lower, T_LOWER_TEETH, false)] {
                 if at > arch.outer_max() {
                     continue;
@@ -1224,12 +1223,12 @@ impl Parts {
                 let t = &mut l.tissue[slot];
                 for j in 0..=CROWN_SAMPLES {
                     let xt = lerp(x0, x1, j as f64 / CROWN_SAMPLES as f64);
-                    // a crown is round across the row and at the row's back end: from the gum
-                    // line on its lingual side over its biting surface to the gum line on its
-                    // buccal side (a row with flat faces cut as a block)
+                    // a crown is round on the row's lingual side and at the row's back end: from
+                    // the gum line over its biting surface out to its upright buccal face (a
+                    // row with flat faces all round cut as a block)
                     let gum = crown_height(arch, xt) * self.crown_round(arch, xt, at);
                     // upper cusps overlap the lower ones by ~1 mm: a tooth row seals until the jaw opens
-                    t.push(if upper { self.upper_occlusal(xt, fade - CUSP * (1. - gum) + gum) } else { self.lower_occlusal(xt, fade + gum) });
+                    t.push(if upper { self.upper_occlusal(xt, gum - CUSP * (1. - gum)) } else { self.lower_occlusal(xt, gum) });
                 }
                 let (a, b) = (t[0], t[CROWN_SAMPLES]);
                 let y = if upper { 15. * k } else { -5. * k };
