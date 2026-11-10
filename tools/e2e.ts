@@ -225,6 +225,37 @@ async function run(viewport: { width: number; height: number }, tag: string) {
     errors.push(`[${tag}] lab: ${what} (last telemetry ${JSON.stringify(last)})`);
     return false;
   };
+  // A short utterance (/asa/, a word) can begin and end while the page is busy with one slow
+  // frame, and a level sampled afterwards is quiet again. So the page keeps the loudest telemetry
+  // since `listen()`: every message passes through it, however late the page gets to it.
+  const listen = () =>
+    page.evaluate(() => {
+      const w = window as unknown as { __chimeraEngine: { latest: { t?: { outRms: number } } | null }; __e2eLoudest?: number };
+      const e = w.__chimeraEngine;
+      w.__e2eLoudest = 0;
+      if (Object.getOwnPropertyDescriptor(e, "latest")?.set) return;
+      let current = e.latest;
+      Object.defineProperty(e, "latest", {
+        configurable: true,
+        enumerable: true,
+        get: () => current,
+        set: (m: typeof current) => {
+          current = m;
+          if (m?.t) w.__e2eLoudest = Math.max(w.__e2eLoudest ?? 0, m.t.outRms);
+        },
+      });
+    });
+  const heard = async (what: string, ms = 6000): Promise<boolean> => {
+    const end = Date.now() + ms;
+    let loudest = 0;
+    while (Date.now() < end) {
+      loudest = await page.evaluate(() => (window as unknown as { __e2eLoudest?: number }).__e2eLoudest ?? 0);
+      if (loudest > 0.01) return true;
+      await page.waitForTimeout(60);
+    }
+    errors.push(`[${tag}] lab: ${what} (loudest telemetry since the click ${loudest})`);
+    return false;
+  };
   await page.getByRole("radio", { name: "Lab", exact: true }).click();
   await page.getByRole("heading", { name: "Tract", exact: true }).waitFor();
   await page.getByRole("button", { name: "open vowel /a/" }).click();
@@ -245,15 +276,17 @@ async function run(viewport: { width: number; height: number }, tag: string) {
   await until("Stop did not close the breath", (v) => v.gate < 0.5);
   await until("the voice still sounds after Stop", (v) => v.rms < 1e-3);
   // a consonant posture is said between two vowels (held alone it is nearly silent), then it is quiet again
+  await listen();
   await page.getByRole("button", { name: "grooved /s/" }).click();
   const area1 = await page.locator(".lab-cut-screen .lab-readout").textContent();
   if (area0 === area1) errors.push(`[${tag}] lab cut did not change with the posture`);
-  await until("the /s/ posture was not spoken", (v) => v.rms > 0.01);
+  await heard("the /s/ posture was not spoken");
   await until("the voice still sounds after /asa/", (v) => v.rms < 1e-3, 8000);
   // words, typed
   await page.getByRole("textbox", { name: "Words to say" }).fill("hello");
+  await listen();
   await page.getByRole("group", { name: "Listen" }).getByRole("button", { name: "Say", exact: true }).click();
-  await until("Say (words) is silent", (v) => v.rms > 0.01);
+  await heard("Say (words) is silent");
   await until("the voice still sounds after the word", (v) => v.rms < 1e-3, 8000);
   await page.getByRole("button", { name: "Show only Tongue" }).click();
   await page.getByRole("button", { name: "Show all", exact: true }).click();
@@ -319,11 +352,18 @@ async function run(viewport: { width: number; height: number }, tag: string) {
   await page.goto(url, { waitUntil: "networkidle" });
   await page.getByRole("radio", { name: "Sing" }).click();
   await page.keyboard.down("d");
-  await page.waitForTimeout(1200);
-  const level = await page.evaluate(() => {
-    // @ts-expect-error debug handle
-    return window.__chimeraEngine?.latest?.t?.outRms ?? -1;
-  });
+  // bounded, like the lab's waits: audio starts behind the page's first frames, and headless
+  // Chromium draws the 3D head in software (a few frames a second), so one reading after a fixed
+  // 1.2 s came before the first telemetry on a busy machine
+  const end = Date.now() + 8000;
+  let level = -1;
+  while (Date.now() < end && !(level > 0.01)) {
+    await page.waitForTimeout(80);
+    level = await page.evaluate(() => {
+      // @ts-expect-error debug handle
+      return window.__chimeraEngine?.latest?.t?.outRms ?? -1;
+    });
+  }
   await page.keyboard.up("d");
   logs.push(`[first-key] sing before start: rms ${level.toFixed(4)}`);
   if (!(level > 0.01)) errors.push(`[first-key] the first sung key, pressed before audio started, made no sound (${level})`);
