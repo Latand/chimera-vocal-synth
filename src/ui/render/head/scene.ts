@@ -41,7 +41,7 @@ export type ViewName = "side" | "front" | "three" | "top" | "mouth";
 
 /** the elements' colours by material */
 const MATERIALS: Record<string, { color: number; roughness: number; coat: number }> = {
-  tongue: { color: 0xc4575e, roughness: 0.42, coat: 0.45 },
+  tongue: { color: 0xc4696f, roughness: 0.5, coat: 0.35 },
   floor: { color: 0xb8505a, roughness: 0.45, coat: 0.4 },
   palate: { color: 0xe0a39a, roughness: 0.5, coat: 0.3 },
   velum: { color: 0xd47f86, roughness: 0.45, coat: 0.4 },
@@ -59,7 +59,7 @@ const lin = (hex: number): [number, number, number] => {
   const c = new THREE.Color(hex);
   return [c.r, c.g, c.b];
 };
-const SKIN = lin(0xd3a084), LIP = lin(0xb45a62), BLUSH = lin(0xcf8472), SHADE = lin(0xb98672), STAND = lin(0xc99f86);
+const SKIN = lin(0xd9b09c), LIP = lin(0xb9776f), BLUSH = lin(0xd29382), SHADE = lin(0x9c6a5c), STAND = lin(0xcfa792);
 
 interface Part {
   element: string;
@@ -77,6 +77,7 @@ export class HeadScene {
   private readonly materials = new Map<string, THREE.MeshPhysicalMaterial>();
   private readonly parts: Part[] = [];
   private readonly env: THREE.Texture;
+  private readonly key: THREE.DirectionalLight;
   private model: VoiceModel | null = null;
   private headMesh: HeadMesh | null = null;
   private rig: HeadRig | null = null;
@@ -101,46 +102,58 @@ export class HeadScene {
     renderer.toneMapping = THREE.NeutralToneMapping;
     renderer.toneMappingExposure = 1.0;
     renderer.localClippingEnabled = true;
+    // the key light casts shadows: the nose's on the cheek, the chin's on the neck, and the
+    // mouth is dark inside wherever the light does not reach through the lips
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFShadowMap;
     // light: a soft room all round (so no side is black), a warm key that travels with the
     // camera from above its shoulder, a cool rim from behind
     const pmrem = new THREE.PMREMGenerator(renderer);
     this.env = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
     pmrem.dispose();
     this.scene.environment = this.env;
-    this.scene.environmentIntensity = 0.3;
-    const key = new THREE.DirectionalLight(0xfff0e2, 2.1);
-    key.position.set(-20, 26, 24);
+    this.scene.environmentIntensity = 0.42;
+    const key = new THREE.DirectionalLight(0xfff3e8, 2.0);
+    key.position.set(-22, 24, 30);
+    key.castShadow = true;
+    key.shadow.mapSize.set(2048, 2048);
+    key.shadow.bias = -0.001;
+    key.shadow.normalBias = 0.12;
+    key.shadow.radius = 5;
+    this.key = key;
     this.camera.add(key);
-    const fill = new THREE.DirectionalLight(0xdfe8ff, 0.28);
+    this.scene.add(key.target);
+    const fill = new THREE.DirectionalLight(0xdfe8ff, 0.22);
     fill.position.set(26, -4, 14);
     this.camera.add(fill);
     this.scene.add(this.camera);
-    const rim = new THREE.DirectionalLight(0xb9d2ff, 0.9);
+    const rim = new THREE.DirectionalLight(0xb9d2ff, 0.7);
     rim.position.set(-30, 30, -45);
     this.scene.add(rim);
 
     for (const [name, m] of Object.entries(MATERIALS)) {
       this.materials.set(
         name,
-        new THREE.MeshPhysicalMaterial({ color: m.color, roughness: m.roughness, metalness: 0, clearcoat: m.coat, clearcoatRoughness: 0.3, side: THREE.DoubleSide, envMapIntensity: 0.9 }),
+        new THREE.MeshPhysicalMaterial({ color: m.color, roughness: m.roughness, metalness: 0, clearcoat: m.coat, clearcoatRoughness: 0.3, side: THREE.DoubleSide, envMapIntensity: 0.9, clipShadows: true, shadowSide: THREE.DoubleSide }),
       );
     }
 
     // skin: colours per vertex; light that enters the skin comes back out red, so the edge of
     // every shadow is warm (a wrapped, tinted diffuse term) and the surface never looks like plastic
-    this.skinMat = new THREE.MeshPhysicalMaterial({ vertexColors: true, roughness: 0.62, metalness: 0, sheen: 0.22, sheenRoughness: 0.55, sheenColor: new THREE.Color(0xffb9a0), envMapIntensity: 0.8 });
+    this.skinMat = new THREE.MeshPhysicalMaterial({ vertexColors: true, roughness: 0.56, metalness: 0, sheen: 0.18, sheenRoughness: 0.55, sheenColor: new THREE.Color(0xffc4b0), envMapIntensity: 0.8, clipShadows: true, shadowSide: THREE.DoubleSide });
     this.skinMat.onBeforeCompile = (shader) => {
       const chunk = THREE.ShaderChunk.lights_physical_pars_fragment.replace(
         "vec3 irradiance = dotNL * directLight.color;",
         `float skinNL = dot( geometryNormal, directLight.direction );
 	float skinWrap = saturate( ( skinNL + 0.32 ) / 1.32 );
-	vec3 irradiance = mix( skinWrap * vec3( 0.95, 0.36, 0.25 ) * 0.6, vec3( dotNL ), smoothstep( 0.0, 0.5, skinNL ) ) * directLight.color;`,
+	vec3 irradiance = mix( skinWrap * vec3( 0.95, 0.42, 0.32 ) * 0.5, vec3( dotNL ), smoothstep( 0.0, 0.5, skinNL ) ) * directLight.color;`,
       );
       shader.fragmentShader = shader.fragmentShader.replace("#include <lights_physical_pars_fragment>", chunk);
     };
-    this.insideMat = new THREE.MeshStandardMaterial({ color: 0x9c4a4f, roughness: 0.6, metalness: 0, side: THREE.BackSide });
+    this.insideMat = new THREE.MeshStandardMaterial({ color: 0x9c4a4f, roughness: 0.6, metalness: 0, side: THREE.BackSide, envMapIntensity: 0.3 });
     this.skin = new THREE.Mesh(this.headGeo, this.skinMat);
     this.inside = new THREE.Mesh(this.headGeo, this.insideMat);
+    this.skin.castShadow = this.skin.receiveShadow = this.inside.receiveShadow = true;
     this.skin.visible = this.inside.visible = false;
     this.scene.add(this.skin, this.inside);
 
@@ -175,18 +188,21 @@ export class HeadScene {
     const k = model.bodyParams.scale;
     const n = mesh.n;
     // colours: the lips' vermilion, warmth over the cheeks, the nose, the ears and the chin, a
-    // little shade in the eye sockets; the stand in one tone
+    // little shade in the eye sockets and in every crease (the nostrils, the ear's bowl, the
+    // lids' line, the corners of the mouth); the stand in one tone
     const colors = new Float32Array(3 * n);
+    const hollow = hollows(rig.rest, mesh.indices, n, k);
     const g = (a: number, b: number, c = 0) => Math.exp(-(a * a + b * b + c * c));
     for (let i = 0; i < n; i++) {
       const x = rig.rest[3 * i] / k, y = rig.rest[3 * i + 1] / k, z = Math.abs(rig.rest[3 * i + 2]) / k;
-      const lip = Math.pow(mesh.tint[i], 0.8);
-      const blush = Math.min(1, 0.55 * g((y - 11.6) / 1.7, (z - 4.3) / 1.5, (x - 4.5) / 2.6) + 0.45 * g((y - 11.2) / 1.0, z / 1.0, (x - 7.6) / 1.2) + 0.5 * g((y - 13.2) / 2.4, (z - 7.4) / 0.9, (x + 2.2) / 2.0) + 0.25 * g((y - 4.9) / 1.0, z / 1.4, (x - 7.0) / 1.2));
-      const shade = 0.5 * g((y - 15.4) / 0.9, (z - 3.1) / 1.3, (x - 6.2) / 1.6);
+      const t = Math.min(1, Math.max(0, (mesh.tint[i] - 0.3) / 0.5));
+      const lip = t * t * (3 - 2 * t);
+      const blush = Math.min(1, 0.5 * g((y - 11.6) / 1.7, (z - 4.3) / 1.5, (x - 4.5) / 2.6) + 0.4 * g((y - 11.2) / 1.0, z / 1.0, (x - 7.6) / 1.2) + 0.45 * g((y - 13.2) / 2.4, (z - 7.4) / 0.9, (x + 2.2) / 2.0) + 0.2 * g((y - 4.9) / 1.0, z / 1.4, (x - 7.0) / 1.2));
+      const shade = Math.min(0.85, 0.35 * g((y - 15.4) / 0.9, (z - 3.1) / 1.3, (x - 6.2) / 1.6) + hollow[i]);
       for (let c = 0; c < 3; c++) {
         let v = SKIN[c] * (1 - blush) + BLUSH[c] * blush;
-        v = v * (1 - shade) + SHADE[c] * shade;
         v = v * (1 - lip) + LIP[c] * lip;
+        v = v * (1 - shade) + SHADE[c] * v * 1.6 * shade;
         colors[3 * i + c] = mesh.stand[i] ? STAND[c] : v;
       }
     }
@@ -241,6 +257,7 @@ export class HeadScene {
           return this.materials.get(g.material) ?? this.materials.get("cheek")!;
         });
         const mesh = new THREE.Mesh(geo, mats);
+        mesh.castShadow = mesh.receiveShadow = true;
         const lineGeo = new THREE.BufferGeometry();
         lineGeo.setAttribute("position", position);
         lineGeo.setIndex(m.lines!);
@@ -266,7 +283,24 @@ export class HeadScene {
       const n = view.meshes.length;
       p.group.position.set(0, o.explode && !withHead ? (i - (n - 1) / 2) * 0.9 * k : 0, o.explode && !withHead ? (i % 2 ? 1 : -1) * 1.2 * k : 0);
     });
-    for (const m of this.materials.values()) m.clippingPlanes = planes;
+    // inside a whole head the room's light does not reach the mouth: what lights it is the key,
+    // through the lips
+    const closed = withHead && !o.cutaway && !o.seeThrough;
+    for (const m of this.materials.values()) {
+      m.clippingPlanes = planes;
+      m.envMapIntensity = closed ? 0.12 : 0.9;
+    }
+    // the key's shadow frame: the head (or the tract alone), wherever the camera carries the light
+    const reach = (withHead ? 21 : 9) * k;
+    this.key.target.position.set((withHead ? -3.5 : 3) * k, (withHead ? 8 : 5.5) * k, 0);
+    const sc = this.key.shadow.camera;
+    if (sc.right !== reach) {
+      sc.left = sc.bottom = -reach;
+      sc.right = sc.top = reach;
+      sc.near = 1;
+      sc.far = 600;
+      sc.updateProjectionMatrix();
+    }
 
     // ---- the head
     if (withHead && !this.rig) this.buildRig(model);
@@ -280,9 +314,12 @@ export class HeadScene {
       this.headGeo.computeBoundingSphere();
       const see = o.seeThrough && !o.cutaway;
       this.skinMat.clippingPlanes = this.insideMat.clippingPlanes = planes;
+      // (a material compiled opaque keeps its alpha at 1 until it is compiled again)
+      if (this.skinMat.transparent !== see) this.skinMat.needsUpdate = true;
       this.skinMat.transparent = see;
-      this.skinMat.opacity = see ? 0.22 : 1;
+      this.skinMat.opacity = see ? 0.3 : 1;
       this.skinMat.depthWrite = !see;
+      this.skin.castShadow = !see;
       this.skin.renderOrder = see ? 2000 : 0;
       this.inside.visible = !see;
       if (o.cutaway && this.painter) {
@@ -349,7 +386,10 @@ export class HeadScene {
       hh = Math.max(hh, Math.abs(v.dot(up)));
       deep = Math.max(deep, v.dot(dir));
     }
-    const dist = deep + margin * Math.max(hh / half, hw / (half * aspect));
+    // (the box's corners stand outside the head's own rounded outline: from an oblique direction
+    // a tenth of the fit is air)
+    const round = name === "three" || name === "top" ? 0.86 : 0.96;
+    const dist = deep + margin * round * Math.max(hh / half, hw / (half * aspect));
     return { target, position: target.clone().addScaledVector(dir, dist) };
   }
 
@@ -378,4 +418,63 @@ export class HeadScene {
       (o.material as THREE.Material).dispose();
     }
   }
+}
+
+/**
+ * How deep in a crease each vertex of the skin lies, 0…0.6: the surface's mean curvature at
+ * rest (its neighbours' centre above the vertex, along the normal), smoothed. A crease keeps
+ * less of the room's light than open skin, and no light in the scene knows that.
+ */
+function hollows(rest: Float32Array, indices: Uint32Array, n: number, k: number): Float32Array {
+  const sum = new Float32Array(3 * n), count = new Uint16Array(n), normal = new Float32Array(3 * n), edge2 = new Float32Array(n);
+  for (let t = 0; t < indices.length; t += 3) {
+    const a = indices[t], b = indices[t + 1], c = indices[t + 2];
+    const ax = rest[3 * a], ay = rest[3 * a + 1], az = rest[3 * a + 2];
+    const ux = rest[3 * b] - ax, uy = rest[3 * b + 1] - ay, uz = rest[3 * b + 2] - az;
+    const vx = rest[3 * c] - ax, vy = rest[3 * c + 1] - ay, vz = rest[3 * c + 2] - az;
+    const nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx;
+    for (const [i, j] of [[a, b], [b, c], [c, a]] as const) {
+      normal[3 * i] += nx;
+      normal[3 * i + 1] += ny;
+      normal[3 * i + 2] += nz;
+      // (an edge is seen once from each of its two triangles: each vertex gets its neighbour twice, evenly)
+      let l2 = 0;
+      for (let q = 0; q < 3; q++) {
+        sum[3 * i + q] += rest[3 * j + q];
+        sum[3 * j + q] += rest[3 * i + q];
+        l2 += (rest[3 * j + q] - rest[3 * i + q]) ** 2;
+      }
+      edge2[i] += l2;
+      edge2[j] += l2;
+      count[i]++;
+      count[j]++;
+    }
+  }
+  let h = new Float32Array(n);
+  for (let i = 0; i < n; i++) {
+    if (count[i] === 0) continue;
+    const nl = Math.hypot(normal[3 * i], normal[3 * i + 1], normal[3 * i + 2]) || 1;
+    let d = 0;
+    for (let q = 0; q < 3; q++) d += (sum[3 * i + q] / count[i] - rest[3 * i + q]) * (normal[3 * i + q] / nl);
+    // the curvature (1/cm, in the template's size): the neighbours' height over the vertex by
+    // their mean squared distance. A fold tighter than 1 cm across is a full crease; the neck's
+    // and the temples' gentle hollows (several cm) are none
+    const curve = (4 * d * k) / Math.max(1e-6, edge2[i] / count[i]);
+    h[i] = Math.min(1, Math.max(0, (curve - 0.35) / 1.4));
+  }
+  // spread over the neighbours twice, so a crease is a soft band and not a line of dark vertices
+  for (let pass = 0; pass < 2; pass++) {
+    const acc = new Float32Array(n);
+    for (let t = 0; t < indices.length; t += 3) {
+      const a = indices[t], b = indices[t + 1], c = indices[t + 2];
+      acc[a] += h[b] + h[c];
+      acc[b] += h[c] + h[a];
+      acc[c] += h[a] + h[b];
+    }
+    const next = new Float32Array(n);
+    for (let i = 0; i < n; i++) next[i] = count[i] ? 0.5 * h[i] + 0.5 * (acc[i] / count[i]) : 0;
+    h = next;
+  }
+  for (let i = 0; i < n; i++) h[i] = 0.6 * Math.min(1, h[i]);
+  return h;
 }

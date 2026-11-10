@@ -259,6 +259,46 @@ async function run(viewport: { width: number; height: number }, tag: string) {
   await page.getByRole("button", { name: "Show all", exact: true }).click();
   await page.getByRole("group", { name: "Controls for" }).getByRole("button", { name: "Midline" }).click();
   for (const v of ["View from the side", "View of the mouth", "View from the front and side"]) await page.getByRole("button", { name: v }).click();
+  // the head whole, see-through, whole again: the skin turns translucent when asked and opaque
+  // again after (a material compiled opaque keeps its alpha at 1: the toggle once left the skin
+  // solid, with holes where the depth order broke)
+  const press = async (label: string, on: boolean) => {
+    const b = page.getByRole("button", { name: label, exact: true }).first();
+    if ((await b.getAttribute("aria-pressed")) !== String(on)) await b.click();
+  };
+  const skinLight = async (): Promise<number> => {
+    await page.waitForTimeout(900);
+    const png = await page.locator(".lab-stage").screenshot();
+    return page.evaluate(async (b64) => {
+      const img = new Image();
+      img.src = `data:image/png;base64,${b64}`;
+      await img.decode();
+      const c = document.createElement("canvas");
+      c.width = img.width;
+      c.height = img.height;
+      const g = c.getContext("2d")!;
+      g.drawImage(img, 0, 0);
+      const d = g.getImageData(0, 0, c.width, c.height).data;
+      // mean brightness of what is drawn (the background is black)
+      let sum = 0, n = 0;
+      for (let q = 0; q < d.length; q += 4 * 5) {
+        const v = d[q] + d[q + 1] + d[q + 2];
+        if (v > 60) (sum += v / 3), n++;
+      }
+      return n ? sum / n : 0;
+    }, png.toString("base64"));
+  };
+  await press("Cut away", false);
+  const whole = await skinLight();
+  await press("See-through", true);
+  const seen = await skinLight();
+  await press("See-through", false);
+  const again = await skinLight();
+  await press("Cut away", true);
+  logs.push(`[${tag}] lab skin brightness: whole ${whole.toFixed(0)}, see-through ${seen.toFixed(0)}, whole again ${again.toFixed(0)}`);
+  if (!(whole > 100)) errors.push(`[${tag}] lab: the whole head is not drawn (brightness ${whole.toFixed(0)})`);
+  if (!(seen < 0.75 * whole)) errors.push(`[${tag}] lab: See-through left the skin opaque (brightness ${whole.toFixed(0)} → ${seen.toFixed(0)})`);
+  if (!(again > 0.9 * whole)) errors.push(`[${tag}] lab: the skin stayed translucent after See-through was turned off (${again.toFixed(0)} against ${whole.toFixed(0)})`);
   if (await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)) errors.push(`[${tag}] lab scrolls horizontally`);
   // back to the human voice
   await page.getByRole("radio", { name: "Play" }).click();
