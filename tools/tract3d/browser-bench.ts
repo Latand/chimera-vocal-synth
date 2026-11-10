@@ -1,6 +1,6 @@
 /**
  * Times the lab's geometry call in the browser, across the whole JSON boundary (encode, wasm,
- * decode, parse), on the served wasm asset. usage: bun tools/tract3d/browser-bench.ts URL OUT.json
+ * decode, parse), and the view call every screen makes, on the served wasm asset. usage: bun tools/tract3d/browser-bench.ts URL OUT.json
  */
 import { chromium } from "playwright-core";
 import { writeFileSync } from "node:fs";
@@ -46,8 +46,22 @@ try {
     };
     const withMeshes = time({ meshes: true, cut: 0.82 });
     const cutOnly = time({ meshes: false, cut: 0.82 });
+    // what every screen asks for when the posture changes: the posture's surfaces as floats
+    // (no laminae, no cuts), with the lips' line and the jaw for the skin
+    const view = (() => {
+      const args = { model: model.model, artic: catalog.neutral, shape: {}, topology: false };
+      call("tract3dView", args);
+      const samples: number[] = [];
+      for (let i = 0; i < 20; i++) {
+        const t = performance.now();
+        call("tract3dView", args);
+        samples.push(performance.now() - t);
+      }
+      samples.sort((a, b) => a - b);
+      return { medianMs: samples[10], p95Ms: samples[19], resultBytes: bytes, floats: fn("chimera_floats_len")() };
+    })();
     call("dropModel", { model: model.model });
-    return { body: "male", calls: 20, withMeshes, cutOnly, targetMs: 16, asset: asset.split("/").pop() };
+    return { body: "male", calls: 20, withMeshes, cutOnly, view, targetMs: 16, asset: asset.split("/").pop() };
   });
   writeFileSync(out, JSON.stringify(result, null, 2));
   console.log(JSON.stringify(result));
