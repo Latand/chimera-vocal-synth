@@ -9,10 +9,18 @@
 //!   and lateral walls are one tissue polygon per lamina, a graph over height (`ring_at`), so
 //!   the envelope's own wall never moves;
 //! - the tongue's dorsal surface moves along fibres between itself and a core curve inside the
-//!   tongue (a tubular neighbourhood: fibres do not cross);
+//!   tongue (a tubular neighbourhood: fibres do not cross), or along the same fibres outwards
+//!   to the wall it faces, never beyond it;
 //! - the tip lobe shortens by an affine compression towards its base line (a homeomorphism);
-//! - teeth, lips, cheeks, faucial pillars and the pharyngeal ring are separate tissue polygons,
+//! - teeth, lips, cheeks, the uvula and the pharyngeal ring are separate tissue polygons,
 //!   united by counting, so they never need to meet another outline exactly;
+//!
+//! From the larynx to the back teeth the tract is a tube of soft walls, and its lumen ends
+//! sideways in a taper, `closing`: the posterior wall lies flat on the spine and turns forward
+//! only at its corners, so in the pharynx it is the front wall (the epiglottis and its folds,
+//! the tongue's root and back) whose sides come back to it; under the soft palate it is the
+//! roof that comes down to the tongue's sides (the faucial arches). Under the hard palate the
+//! tongue is a loaf between the tooth rows.
 //! - the laryngeal tube, the piriform fossae and the valleculae are air polygons of their own
 //!   (they override tissue), each a smooth solid cut at the lamina's offset.
 use super::lamina::*;
@@ -39,12 +47,15 @@ const SPEE: f64 = 0.05;
 /// lateral offsets (template cm) over which the tooth rows rise out of the roof/floor: the
 /// incisors at the midline are the engine's own outlines, the rows join them from the side
 const BAND_FADE: (f64, f64) = (0.25, 0.45);
-/// template x behind which the oral cavity ends (faucial pillars) and the pharynx begins
-const FAUCES_X: f64 = 1.0;
 /// template x of the back of the upper dental arch
 const ARCH_DEPTH_BACK: f64 = UPPER_INCISOR_X - ARCH_DEPTH;
-/// template height below which the faucial pillars have run into the tongue's sides
-const FAUCES_Y: f64 = 6.2;
+/// The ring's outline across: flat behind over two thirds of its width, its corners rounded
+/// (a superellipse's exponent).
+const RING_SHAPE: f64 = 3.5;
+/// Samples along each tooth row's crown in a lamina.
+const CROWN_SAMPLES: usize = 12;
+/// Points of the uvula's outline in a lamina.
+pub const UVULA_SAMPLES: usize = 8;
 /// vertical overlap of upper and lower cusps (template cm)
 pub const CUSP: f64 = 0.12;
 
@@ -175,25 +186,43 @@ pub struct Parts {
     pub artic: HumanArtic,
     /// posterior pharyngeal wall, from below `bottom` up to the port window
     pub wall: Vec<Vec2>,
+    /// the engine's whole posterior wall: it runs on above the port window, over the
+    /// nasopharynx's roof (no air of the oral tract lies there)
+    pub full_wall: Vec<Vec2>,
+    /// what the tongue faces (the wall, the soft palate from its tip, the hard palate) and what
+    /// the soft palate faces (the epiglottis, the tongue's back, its underside)
+    outer: Vec<Vec2>,
+    inner: Vec<Vec2>,
     /// the pharyngeal ring's sample heights and the midline wall's x at each
     pub ring_y: Vec<f64>,
     pub ring_x: Vec<f64>,
-    /// x of the faucial pillars' back face
-    pub fauces_x: f64,
     /// x the pharynx's side walls reach at its half-width, at the mouth's height (the back of
     /// the dental arches) and low in the throat (just in front of the epiglottis' foot)
     pub ring_front: f64,
     pub ring_front_low: f64,
     /// velum oral surface, uvula tip → root, and each point's arc-length fraction from the tip
     pub velum: Vec<Vec2>,
+    /// its nasal surface, point for point (display: no air of the oral tract lies above it)
+    pub velum_nasal: Vec<Vec2>,
     pub velum_f: Vec<f64>,
     pub velum_len: f64,
     pub velum_top: f64,
     pub velum_bottom: f64,
+    /// per velum point: how far (cm) its sides come down to the tongue (the faucial arches),
+    /// and the tube's half-width there
+    pub varch: Vec<f64>,
+    pub vtube: Vec<f64>,
+    /// the uvula's lobe: where it hangs from the soft palate's oral surface, its axis, its
+    /// length, its radius front to back and its half-width (cm)
+    pub uvula: (Vec2, Vec2, f64, f64, f64),
     /// hard palate, behind the velum root → upper incisor edge
     pub palate: Vec<Vec2>,
     pub palate_drop: Vec<f64>,
     pub palate_xt: Vec<f64>,
+    /// arc length along the hard palate from its back edge, and how far the roof behind the
+    /// back teeth comes down with the soft palate's root
+    palate_s: Vec<f64>,
+    palate_arch: Vec<f64>,
     /// upper lip inner outline, base → edge
     pub upper_lip: Vec<Vec2>,
     pub epi: [Vec2; 2],
@@ -209,6 +238,12 @@ pub struct Parts {
     pub dside: Vec<f64>,
     pub dgroove: Vec<f64>,
     pub dgw: Vec<f64>,
+    /// per dorsal point: how far (cm) its sides come out to the wall it faces, how much of its
+    /// own rounding-off it keeps (1 under the hard palate, 0 in the soft tube), and the tube's
+    /// half-width there
+    pub dclose: Vec<f64>,
+    pub dloaf: Vec<f64>,
+    pub dtube: Vec<f64>,
     /// underside after the tip, ending at the frenulum
     pub under: Vec<Vec2>,
     pub floor: [Vec2; 2],
@@ -248,19 +283,27 @@ impl Parts {
             shape: ShapeParams::default(),
             artic: super::super::human::NEUTRAL,
             wall: Vec::with_capacity(40),
+            full_wall: Vec::with_capacity(40),
+            outer: Vec::with_capacity(100),
+            inner: Vec::with_capacity(100),
             ring_y: Vec::with_capacity(RING_SAMPLES + 1),
             ring_x: Vec::with_capacity(RING_SAMPLES + 1),
-            fauces_x: 1.,
             ring_front: 2.,
             ring_front_low: 1.,
             velum: Vec::with_capacity(16),
+            velum_nasal: Vec::with_capacity(16),
             velum_f: Vec::with_capacity(16),
             velum_len: 1.,
             velum_top: 0.,
             velum_bottom: 0.,
+            varch: Vec::with_capacity(16),
+            vtube: Vec::with_capacity(16),
+            uvula: (v(0., 0.), v(0., -1.), 0., 0.3, 0.4),
             palate: Vec::with_capacity(40),
             palate_drop: Vec::with_capacity(40),
             palate_xt: Vec::with_capacity(40),
+            palate_s: Vec::with_capacity(40),
+            palate_arch: Vec::with_capacity(40),
             upper_lip: Vec::with_capacity(8),
             epi: [v(0., 0.); 2],
             vallecula: v(0., 0.),
@@ -273,6 +316,9 @@ impl Parts {
             dside: Vec::with_capacity(64),
             dgroove: Vec::with_capacity(64),
             dgw: Vec::with_capacity(64),
+            dclose: Vec::with_capacity(64),
+            dloaf: Vec::with_capacity(64),
+            dtube: Vec::with_capacity(64),
             under: Vec::with_capacity(8),
             floor: [v(0., 0.); 2],
             lower_front: Vec::with_capacity(12),
@@ -306,8 +352,13 @@ impl Parts {
         // outer: wall …, velum (11, tip → root), palate[1..] (33), upper lip inner (7)
         self.wall.clear();
         self.wall.extend_from_slice(&f.outer[..no - 51]);
+        self.full_wall.clear();
+        self.full_wall.extend_from_slice(tract.pharynx_wall());
         self.velum.clear();
         self.velum.extend_from_slice(&f.outer[no - 51..no - 40]);
+        // (the frame's outline: the nasal surface from the root to the tip, then the oral one back)
+        self.velum_nasal.clear();
+        self.velum_nasal.extend(f.velum[..f.velum.len() / 2].iter().rev());
         self.palate.clear();
         self.palate.extend_from_slice(&f.outer[no - 41..no - 7]);
         self.upper_lip.clear();
@@ -340,7 +391,6 @@ impl Parts {
         self.root.push(self.dorsal[0]);
 
         // the pharyngeal ring's heights, with the midline wall there
-        self.fauces_x = m.p(FAUCES_X, 8.).x;
         self.ring_front = m.p(ARCH_DEPTH_BACK, 8.).x + 0.3 * k;
         self.ring_front_low = self.epi[0].x + 0.7 * k;
         self.ring_y.clear();
@@ -424,12 +474,14 @@ impl Parts {
         // palate: how far the roof may drop towards the arch (down to the gum line)
         self.palate_drop.clear();
         self.palate_xt.clear();
-        for q in &self.palate {
+        self.palate_s.clear();
+        for (i, q) in self.palate.iter().enumerate() {
             let xt = m.un_p(*q).x;
-            let crown = lerp(1.0, 0.75, smoothstep(0., 0.5, (UPPER_INCISOR_X - xt) / ARCH_DEPTH));
-            let gum = m.p(xt, occlusal(xt) + crown).y;
+            let gum = m.p(xt, occlusal(xt) + crown_height(&self.upper, xt)).y;
             self.palate_drop.push((q.y - gum).clamp(0., s.vault_depth * k));
             self.palate_xt.push(xt);
+            let before = if i == 0 { 0. } else { self.palate_s[i - 1] + dist(self.palate[i - 1], *q) };
+            self.palate_s.push(before);
         }
 
         // tongue: arc-length parameter t from the vallecula (0) to the tip apex (1)
@@ -479,6 +531,19 @@ impl Parts {
         // tip lobe: in front of the line from the blade's start (end of the body arc) to the
         // frenulum; it shortens laterally as the tongue narrows towards its tip
         self.lobe_start = n.saturating_sub(7);
+        // seen from above the tongue's front is round: it keeps the blade's width and comes in
+        // to the tip's over the lobe's last stretch (a quarter of an ellipse; the widths between
+        // stations made it a wedge, with air beside it down to the floor of the mouth). A
+        // lateral draws its sides in: the wedge again, with the channels beside it.
+        {
+            let (start, last) = (self.lobe_start, n - 1);
+            let (blade, tip) = (self.dw[start], (s.tip_width * k).max(0.2 * k));
+            let lateral = a.lateral.clamp(0., 1.);
+            for i in start + 1..=last {
+                let u = (i - start) as f64 / (last - start) as f64;
+                self.dw[i] = lerp(tip + (blade - tip) * sqrt(1. - u * u), self.dw[i], lateral);
+            }
+        }
         self.lobe_p = self.dorsal[self.lobe_start];
         let fren = *self.under.last().unwrap();
         let tip = self.dorsal[n - 1];
@@ -489,14 +554,111 @@ impl Parts {
         self.lobe_a = a_dir;
         self.lobe_u = dot(sub(tip, self.lobe_p), a_dir).max(1e-3);
 
+        // ---- the soft tube. Each dorsal point looks along its normal at what it faces: the
+        // posterior wall (its sides then come out to it: the lumen ends sideways between a flat
+        // wall and a hollowed tongue), the soft palate (whose sides come down to the tongue
+        // instead: the tongue stays level across) or the hard palate (a loaf between the teeth,
+        // from 1.5 cm in front of the palate's back edge on).
+        self.outer.clear();
+        self.outer.extend_from_slice(&self.wall);
+        self.outer.extend_from_slice(&self.velum);
+        self.outer.extend_from_slice(&self.palate[1..]);
+        let (nw, nv) = (self.wall.len(), self.velum.len());
+        let lower_back = self.lower_occlusal(self.lower.back(), 0.).x;
+        self.dclose.clear();
+        self.dloaf.clear();
+        self.dtube.clear();
+        for i in 0..n {
+            let (q, nrm) = (self.dorsal[i], self.dn[i]);
+            let (mut close, mut loaf, mut y) = (0., 1., q.y);
+            if let Some((t, seg, u)) = ray_hit(q, nrm, &self.outer, 6. * k) {
+                let (roof, soft) = if seg < nw {
+                    (0., 1.)
+                } else if seg < nw + nv - 1 {
+                    (smoothstep(0.1, 0.5, lerp(self.velum_f[seg - nw], self.velum_f[seg - nw + 1], u)), 1.)
+                } else {
+                    let j = (seg - (nw + nv - 1)).min(self.palate_s.len() - 2);
+                    (1., 1. - smoothstep(0., 1.5 * k, lerp(self.palate_s[j], self.palate_s[j + 1], u)))
+                };
+                close = soft * (1. - roof) * t;
+                loaf = 1. - soft;
+                y = q.y + 0.5 * t * nrm.y;
+            }
+            // behind the last lower molar nothing stands beside the tongue for its margin to
+            // round off against: it stays level out to the cheek (rounded off there, it left a
+            // gutter 9 mm deep on each side of the tongue's back when the jaw was down)
+            loaf *= smoothstep(lower_back - 0.2 * k, lower_back + 1.0 * k, q.x);
+            self.dclose.push(close);
+            self.dloaf.push(loaf);
+            self.dtube.push(self.ring_width(y, true));
+        }
+        // (two passes of ¼-½-¼ along the chain: a ray that passes the uvula's tip moves from the
+        // soft palate to the wall behind it)
+        for values in [&mut self.dclose, &mut self.dloaf, &mut self.dtube] {
+            for _ in 0..2 {
+                let mut prev = values[0];
+                for i in 1..n - 1 {
+                    let here = values[i];
+                    values[i] = 0.25 * prev + 0.5 * here + 0.25 * values[i + 1];
+                    prev = here;
+                }
+            }
+        }
+        // the soft palate's own side: each of its points looks down at the tongue, and its
+        // sides come down that far (the faucial arches). Nothing of that at the uvula's end.
+        self.inner.clear();
+        self.inner.extend_from_slice(&self.epi);
+        self.inner.extend_from_slice(&self.dorsal);
+        self.inner.extend_from_slice(&self.under);
+        self.varch.clear();
+        self.vtube.clear();
+        self.varch.resize(nv, 0.);
+        self.vtube.resize(nv, 0.);
+        // (straight down, so the roof stays a graph over x; from the root back to the tip, a
+        // point with no tongue under it taking the gap of the one in front of it)
+        let mut gap = 2.5 * k;
+        for j in (0..nv).rev() {
+            if let Some(h) = ray_hit(self.velum[j], v(0., -1.), &self.inner, 4. * k) {
+                gap = h.0;
+            }
+            self.varch[j] = smoothstep(0.1, 0.5, self.velum_f[j]) * gap;
+            self.vtube[j] = self.ring_width(self.velum[j].y - 0.5 * gap, true);
+        }
+        // behind the back teeth the hard palate's edge comes down with the soft palate's root,
+        // less and less up to the last molar (the arch's front slope)
+        self.palate_arch.clear();
+        let root = self.varch[nv - 1];
+        let pns = self.palate_xt[0];
+        for i in 0..self.palate.len() {
+            self.palate_arch.push(root * (1. - smoothstep(pns, ARCH_DEPTH_BACK + 0.4, self.palate_xt[i])));
+        }
+        // the uvula: a lobe hanging from the soft palate's oral surface just in front of its
+        // tip. Raised, the soft palate lies back against the wall and the lobe hangs down in
+        // front of it; lowered, the soft palate hangs itself and the lobe carries on along it.
+        {
+            let open = (a.velum / 1.2).clamp(0., 1.);
+            let at = 0.16 * (1. - open);
+            let j = (0..nv - 1).find(|&j| self.velum_f[j + 1] >= at).unwrap_or(0);
+            let u = ((at - self.velum_f[j]) / (self.velum_f[j + 1] - self.velum_f[j]).max(1e-9)).clamp(0., 1.);
+            let base = lerp_v(self.velum[j], self.velum[j + 1], u);
+            let angle = lerp(262., 242., open) * PI / 180.;
+            let axis = v(cos(angle), sin(angle));
+            let whole = s.uvula_length * k * lerp(0.8, 0.35, open);
+            // (squashed where the tongue's back comes up to it)
+            let length = ray_hit(add(base, scale(axis, 0.05 * k)), axis, &self.inner, whole + k).map_or(whole, |h| (h.0 + 0.03 * k).clamp(0.35 * whole, whole));
+            self.uvula = (base, axis, length, 0.3 * k * (s.uvula_width / 0.8).min(1.2), 0.5 * s.uvula_width * k);
+        }
+
         // the piriform fossae: beside the laryngeal tube's rim, beyond the aryepiglottic fold,
         // each between the ring behind it and the front wall of the hypopharynx at its own
         // lateral offset (the ring at rest: a squeeze of the pharynx does not move them)
         let zc = self.fold_span().1 + 0.03 * k + s.piriform_width * k;
         let back = self.ring_x_at(self.bottom, zc, false) + 0.04 * k;
         // (its front runs 1 mm under the front wall's foot)
-        let front = self.epiglottis_at(0., zc).x + 0.1 * k;
-        self.pir = (0.5 * (front + back), zc, (0.5 * (front - back)).max(0.15 * k));
+        let front = self.front_wall(0., zc, false).x + 0.1 * k;
+        // (a pouch wider below its mouth than the lumen above it: 0.85 of the lumen's depth there
+        // as its front-to-back radius)
+        self.pir = (0.5 * (front + back), zc, (0.85 * (front - back)).max(0.15 * k));
     }
 
     /// The lateral offsets (cm) between which each aryepiglottic fold stands: from just outside
@@ -520,20 +682,28 @@ impl Parts {
         Some(self.bottom + self.shape.ary_fold_height * self.map.k * crest)
     }
 
-    /// The posterior wall's midline x at height y (the wall is clipped at the port window: above
-    /// it, and below its first point, the nearest point's x).
+    /// The posterior wall's midline x at height y, on the engine's whole wall: it runs on above
+    /// the port window and forward over the nasopharynx's roof (below its first point and above
+    /// its last, the nearest point's x).
     pub fn wall_x(&self, y: f64) -> f64 {
-        let n = self.wall.len();
-        if y <= self.wall[0].y {
-            return self.wall[0].x;
+        let wall = &self.full_wall;
+        let n = wall.len();
+        if y <= wall[0].y {
+            return wall[0].x;
         }
         for i in 1..n {
-            let (a, b) = (self.wall[i - 1], self.wall[i]);
+            let (a, b) = (wall[i - 1], wall[i]);
             if y <= b.y {
                 return lerp(a.x, b.x, ((y - a.y) / (b.y - a.y).max(1e-9)).clamp(0., 1.));
             }
         }
-        self.wall[n - 1].x
+        wall[n - 1].x
+    }
+    /// How much of the gap between the tube's two walls is taken up at a share `w` of its
+    /// half-width: nothing on the midline, all of it from the tube's side on (and 3 % more, so
+    /// the walls press into each other there). `pharynxShape` is the outline's exponent.
+    pub fn closing(&self, w: f64) -> f64 {
+        1.03 * (1. - superellipse(w, self.shape.pharynx_shape))
     }
 
     pub fn jaw(&self, x: f64, y: f64) -> Vec2 {
@@ -558,27 +728,20 @@ impl Parts {
             lerp(s.pharynx_width_hypo, s.pharynx_width_oro, smoothstep(2., 6., yt)),
             s.pharynx_width_naso,
             smoothstep(6., 9., yt),
-        ) * (if squeezed { 1. - 0.7 * s.lateral_squeeze } else { 1. })
+        ) * (if squeezed { 1. - 0.5 * s.lateral_squeeze } else { 1. })
             * self.map.k
     }
     /// the ring's x at height y and lateral offset z, from the midline wall's x there
     fn ring_x_at(&self, y: f64, z: f64, squeezed: bool) -> f64 {
         let x0 = self.wall_x(y);
         let w = (z.abs() / self.ring_width(y, squeezed)).min(1.);
-        // (the hypopharynx lies flat on the spine between the thyroid's plates: squarer)
-        let square = 1.2 * (1. - smoothstep(2., 6., self.map.un_p(v(0., y)).y));
-        lerp(x0, self.ring_reach(y).max(x0), 1. - superellipse(w, self.shape.pharynx_shape + square))
+        lerp(x0, self.ring_reach(y).max(x0), 1. - superellipse(w, RING_SHAPE))
     }
     /// How far forward the side walls come at height y: to the back teeth beside the mouth, to
     /// the thyroid's plates in front of the epiglottis' foot low in the throat.
     fn ring_reach(&self, y: f64) -> f64 {
         lerp(self.ring_front_low, self.ring_front, smoothstep(3., 6.5, self.map.un_p(v(0., y)).y))
     }
-    /// faucial isthmus half-width (cm): the pillars stand just inside the velum's edges
-    pub fn fauces_width(&self) -> f64 {
-        0.45 * self.shape.velum_width * self.map.k
-    }
-
     /// Tongue dorsal point `i` at lateral offset z, before the tip-lobe compression.
     pub fn dorsal_at(&self, i: usize, z: f64) -> Vec2 {
         let s = &self.shape;
@@ -586,11 +749,10 @@ impl Parts {
         let n = self.dn[i];
         let th = self.dth[i];
         let w = z.abs() / self.dw[i];
-        // what faces the pharynx is convex across its whole width (the root and the back of the
-        // tongue bulge into it, and the grooves beside them run forward); what faces the palate
-        // is flat across the middle and rounds over its outer 30 % to the core
-        let flat = 0.7 * smoothstep(0.12, 0.35, self.dt[i]) * smoothstep(-0.9, -0.2, n.x);
-        let e = if w <= flat { 1. } else { superellipse((w - flat) / (1. - flat), s.edge_round) };
+        // under the hard palate the tongue is a loaf: convex across its whole width, rounding
+        // off to its core at the margins (a middle drawn flat gave every cut a straight floor).
+        // In the soft tube it keeps its midline's level and its sides come out to the wall
+        let e = 1. + self.dloaf[i] * (superellipse(w, s.edge_round) - 1.);
         // raising (bracing, cupping) spreads from a quarter of the width; lowering (lateral
         // channels) stays at the margins, leaving a midline contact for /l/
         let rise = if self.dside[i] >= 0. { smoothstep(0.25, 0.8, w) } else { smoothstep(0.55, 0.95, w) };
@@ -598,7 +760,7 @@ impl Parts {
         let gw = self.dgw[i];
         let g = if z.abs() < gw { 0.5 + 0.5 * cos(PI * z / gw) } else { 0. };
         let lam = (e + (self.dside[i] * side - self.dgroove[i] * g) / th).clamp(0., 3.);
-        add(q, scale(n, th * (lam - 1.)))
+        add(q, scale(n, th * (lam - 1.) + self.dclose[i] * self.closing(z.abs() / self.dtube[i])))
     }
     /// how much of the tip lobe remains at lateral offset z (1: all of it)
     pub fn lobe_factor(&self, z: f64) -> f64 {
@@ -638,7 +800,9 @@ impl Parts {
         let q = self.palate[i];
         let a = self.upper.inner_at(self.palate_xt[i]) * self.map.k;
         let w = if a < 1e-6 { 1. } else { (z.abs() / a).min(1.) };
-        v(q.x, q.y - self.palate_drop[i] * pow(w, self.shape.vault_shape))
+        let arch = self.palate_arch[i];
+        let arch = if arch > 0. { arch * self.closing(z.abs() / self.vtube[self.vtube.len() - 1]) } else { 0. };
+        v(q.x, q.y - self.palate_drop[i] * pow(w, self.shape.vault_shape) - arch)
     }
     /// fraction of the velum (from the tip) that is uvula
     pub fn uvula_fraction(&self) -> f64 {
@@ -650,6 +814,16 @@ impl Parts {
         let u = self.uvula_fraction();
         0.5 * lerp(self.shape.uvula_width, self.shape.velum_width, smoothstep(0.85 * u, u + 0.25, f)) * self.map.k
     }
+    /// How far sideways the roof reaches at arc fraction f from the tip: the uvula's own width
+    /// along the uvula, the soft palate's as its free margin widens, and from there to the root
+    /// any width (beyond the soft palate's own edge the roof is the faucial arch).
+    pub fn roof_width_at(&self, f: f64) -> f64 {
+        if f >= self.uvula_fraction() + 0.25 {
+            f64::INFINITY
+        } else {
+            self.velum_width_at(f)
+        }
+    }
     /// the velum's point i at lateral offset z: off the midline the free margin recedes towards
     /// the root (the faucial arches), so a lamina meets the velum only from where it is that wide
     pub fn velum_at(&self, i: usize, z: f64) -> Vec2 {
@@ -659,19 +833,21 @@ impl Parts {
             let u = self.uvula_fraction();
             let q = self.velum[j];
             // a longer or shorter uvula moves its tip down or up
-            v(q.x, q.y - (self.shape.uvula_length - 1.) * (1. - self.velum_f[j] / u).max(0.) * 0.8 * self.map.k)
+            let q = v(q.x, q.y - (self.shape.uvula_length - 1.) * (1. - self.velum_f[j] / u).max(0.) * 0.8 * self.map.k);
+            // the faucial arches: the sides come down to the tongue
+            v(q.x, q.y - self.varch[j] * self.closing(az / self.vtube[j]))
         };
-        if self.velum_width_at(self.velum_f[i]) >= az {
+        if self.roof_width_at(self.velum_f[i]) >= az {
             return lift(i);
         }
         // the first point from the tip that is wide enough, interpolated
         for j in i + 1..n {
-            if self.velum_width_at(self.velum_f[j]) >= az {
-                let (w0, w1) = (self.velum_width_at(self.velum_f[j - 1]), self.velum_width_at(self.velum_f[j]));
+            if self.roof_width_at(self.velum_f[j]) >= az {
+                let (w0, w1) = (self.roof_width_at(self.velum_f[j - 1]), self.roof_width_at(self.velum_f[j]).min(4. * self.map.k));
                 return lerp_v(lift(j - 1), lift(j), ((az - w0) / (w1 - w0).max(1e-9)).clamp(0., 1.));
             }
         }
-        self.velum[n - 1]
+        lift(n - 1)
     }
     /// The pharyngeal ring at sample height i and lateral offset z: the posterior wall on the
     /// midline, coming forward round the sides until, at the ring's half-width, it has reached
@@ -682,9 +858,7 @@ impl Parts {
     pub fn ring_at(&self, i: usize, z: f64) -> Vec2 {
         let (y, x0) = (self.ring_y[i], self.ring_x[i]);
         let w = (z.abs() / self.pharynx_width(y)).min(1.);
-        // (the hypopharynx lies flat on the spine between the thyroid's plates: squarer)
-        let square = 1.2 * (1. - smoothstep(2., 6., self.map.un_p(v(0., y)).y));
-        v(lerp(x0, self.ring_reach(y).max(x0), 1. - superellipse(w, self.shape.pharynx_shape + square)), y)
+        v(lerp(x0, self.ring_reach(y).max(x0), 1. - superellipse(w, RING_SHAPE)), y)
     }
     /// The ring at height y and lateral offset z: the point of the lamina's own polyline there
     /// (between `ring_at` of the two samples around y), so a surface drawn through these points
@@ -714,16 +888,22 @@ impl Parts {
     }
     /// The front wall of the hypopharynx at lateral offset z, a fraction f of the way from the
     /// engine's epiglottis base to its tip: the epiglottis' laryngeal surface over its own
-    /// width, its sides curled backwards (`epiglottisCurl`); beyond its edges the folds that
-    /// run from it to the side walls come back to the midline's plane.
+    /// width, its sides curled backwards (`epiglottisCurl`); it and the folds beyond its edges
+    /// come back to the posterior wall at the tube's sides (`closing`).
     pub fn epiglottis_at(&self, f: f64, z: f64) -> Vec2 {
+        self.front_wall(f, z, true)
+    }
+    /// `epiglottis_at` with the pharynx's side walls as `lateralSqueeze` draws them in, or at rest.
+    fn front_wall(&self, f: f64, z: f64, squeezed: bool) -> Vec2 {
         let k = self.map.k;
         let we = self.shape.epiglottis_width * k;
-        let az = z.abs();
-        let q = if az <= we { az * az } else { we * we * (1. - smoothstep(we, we + 0.35 * k, az)) };
+        let az = z.abs().min(we);
         // (weights that give the engine's own two points exactly at f = 0 and 1)
         let (a, b) = (self.epi[0], self.epi[1]);
-        v(a.x * (1. - f) + b.x * f - self.shape.epiglottis_curl * q / k, a.y * (1. - f) + b.y * f)
+        let (x, y) = (a.x * (1. - f) + b.x * f - self.shape.epiglottis_curl * az * az / k, a.y * (1. - f) + b.y * f);
+        // the tube's front wall: its sides come back to the posterior wall
+        let back = self.wall_x(y);
+        v(x - (x - back).max(0.) * self.closing(z.abs() / self.ring_width(y, squeezed)), y)
     }
     /// How far up from the base (0…1 of the midline's height) the front wall stands at lateral
     /// offset z: the epiglottis is a leaf, highest on the midline and lowest at its edges;
@@ -858,6 +1038,79 @@ impl Parts {
         self.jaw(xt, occlusal(xt) - over - drop)
     }
 
+    /// The uvula's outline in the lamina at lateral offset z: from inside the soft palate down
+    /// one side, round its end and back up the other. None beside it.
+    pub fn uvula_outline(&self, z: f64) -> Option<[Vec2; UVULA_SAMPLES + 3]> {
+        let (base, axis, length, radius, half) = self.uvula;
+        let az = z.abs();
+        if az >= half || length <= 0. {
+            return None;
+        }
+        let across = sqrt(1. - (az / half) * (az / half));
+        let (r, len) = (radius * across, length * (0.6 + 0.4 * across));
+        let side = v(-axis.y, axis.x);
+        let root = sub(base, scale(axis, 0.3 * self.map.k));
+        let centre = add(base, scale(axis, (len - r).max(0.)));
+        let mut out = [root; UVULA_SAMPLES + 3];
+        out[0] = add(root, scale(side, r));
+        for i in 0..=UVULA_SAMPLES {
+            let th = PI * i as f64 / UVULA_SAMPLES as f64;
+            out[i + 1] = add(centre, add(scale(side, r * cos(th)), scale(axis, r * sin(th))));
+        }
+        out[UVULA_SAMPLES + 2] = sub(root, scale(side, r));
+        Some(out)
+    }
+    /// How far up from its base (0…1 of the midline's height) the epiglottis' leaf begins at
+    /// lateral offset z: a leaf on a stalk, a third of its width at the foot and all of it from
+    /// half its height on. (Below the valleculae's floor the leaf lies inside the front wall.)
+    pub fn epiglottis_foot(&self, z: f64) -> f64 {
+        let w = z.abs() / (self.shape.epiglottis_width * self.map.k);
+        0.5 * ((w - 0.33) / 0.67).clamp(0., 1.)
+    }
+    /// The hypopharynx's floor at (x, z): its level, the aryepiglottic folds standing on it and
+    /// the piriform fossae let into it (the same fold tops and pouches the laminae hold).
+    pub fn floor_height(&self, x: f64, z: f64) -> f64 {
+        let side = if z < 0. { -1. } else { 1. };
+        let (top, height) = self.piriform_top();
+        let (cx, cz, rx, rz) = self.piriform(side);
+        let e = ((x - cx) / rx).powi(2) + ((z - cz) / rz).powi(2);
+        if e < 1. {
+            let y = top - height * sqrt(1. - e);
+            if y < self.bottom {
+                return y;
+            }
+        }
+        let (back, front) = (self.wall_point(self.bottom, z).x, self.epiglottis_at(0., z).x);
+        let u = ((x - back) / (front - back).max(1e-6)).clamp(0., 1.);
+        self.fold_top(z, u).unwrap_or(self.bottom)
+    }
+    /// How far from (cx, 0) along the unit vector (dx, dz) the hypopharynx's floor reaches: to
+    /// the ring behind and beside it, to the front wall in front.
+    pub fn floor_reach(&self, cx: f64, dx: f64, dz: f64) -> f64 {
+        let inside = |t: f64| {
+            let (x, z) = (cx + t * dx, t * dz);
+            x >= self.wall_point(self.bottom, z).x && x <= self.epiglottis_at(0., z).x
+        };
+        let (mut lo, mut hi) = (0., 5. * self.map.k);
+        for _ in 0..18 {
+            let mid = 0.5 * (lo + hi);
+            if inside(mid) {
+                lo = mid;
+            } else {
+                hi = mid;
+            }
+        }
+        lo
+    }
+    /// How far towards its gum line a tooth row's surface has rounded off at template x and
+    /// lateral offset `at` (template cm): 0 over the middle of the row, 1 at its lingual and
+    /// buccal edges and at its back end (behind the last molar).
+    pub fn crown_round(&self, arch: &Arch, xt: f64, at: f64) -> f64 {
+        let (inner, outer) = (arch.inner_at(xt), arch.outer_at(xt));
+        let across = if outer > inner + 1e-6 { ((at - inner) / (outer - inner)).clamp(0., 1.) * 2. - 1. } else { 0. };
+        let end = 1. - ((xt - arch.back()) / 0.45).clamp(0., 1.);
+        1. - superellipse(across, 3.) * superellipse(end, 3.)
+    }
     /// Fill one lamina. All polygons are rebuilt; buffers keep their capacity.
     pub fn fill(&self, l: &mut Lamina) {
         let k = self.map.k;
@@ -923,7 +1176,7 @@ impl Parts {
         // ---- the epiglottis' leaf: free above the valleculae's floor, inside the tongue's
         // polygon below it
         if az < s.epiglottis_width * k {
-            let base = self.epiglottis_at(0., z);
+            let base = self.epiglottis_at(self.epiglottis_foot(z).min(self.epiglottis_top(z)), z);
             let tip = self.epiglottis_tip(z);
             let th = self.epiglottis_thickness();
             l.tissue[T_EPIGLOTTIS].extend_from_slice(&[base, tip, add(tip, th), add(base, th)]);
@@ -964,12 +1217,16 @@ impl Parts {
                 let x0 = arch.x_in(at);
                 let x1 = arch.x_out(at).max(x0);
                 let t = &mut l.tissue[slot];
-                for j in 0..=6 {
-                    let xt = lerp(x0, x1, j as f64 / 6.);
+                for j in 0..=CROWN_SAMPLES {
+                    let xt = lerp(x0, x1, j as f64 / CROWN_SAMPLES as f64);
+                    // a crown is round across the row and at the row's back end: from the gum
+                    // line on its lingual side over its biting surface to the gum line on its
+                    // buccal side (a row with flat faces cut as a block)
+                    let gum = crown_height(arch, xt) * self.crown_round(arch, xt, at);
                     // upper cusps overlap the lower ones by ~1 mm: a tooth row seals until the jaw opens
-                    t.push(if upper { self.upper_occlusal(xt, fade - CUSP) } else { self.lower_occlusal(xt, fade) });
+                    t.push(if upper { self.upper_occlusal(xt, fade - CUSP * (1. - gum) + gum) } else { self.lower_occlusal(xt, fade + gum) });
                 }
-                let (a, b) = (t[0], t[6]);
+                let (a, b) = (t[0], t[CROWN_SAMPLES]);
                 let y = if upper { 15. * k } else { -5. * k };
                 t.push(v(b.x, y));
                 t.push(v(a.x, y));
@@ -984,35 +1241,29 @@ impl Parts {
                 let top = self.upper.outer_max();
                 let back = self.map.p(self.upper.back(), 8.).x;
                 if at <= top {
-                    let x = self.map.p(self.upper.x_out(at) + gap, 8.).x + slide;
-                    l.tissue[T_CHEEK[0]].extend_from_slice(&[v(x, -5. * k), v(15. * k, -5. * k), v(15. * k, 15. * k), v(x, 15. * k)]);
-                    // between the tooth rows the cheek bulges in when the jaw is down (the muscle
-                    // in it keeps it against the teeth): up to half the rows' thickness at the
-                    // middle of the gap, nothing where the rows meet. The air between the rows
-                    // ends in a rounded wedge, where it ended against a flat wall.
-                    if slide == 0. && gap == 0. {
-                        let (x_in, x_front) = (self.upper.x_in(at), self.upper.x_out(at).max(self.upper.x_in(at)));
-                        let t = &mut l.tissue[T_CHEEK[1]];
-                        let section = |xt: f64| -> (f64, f64, f64) {
-                            let (hi, lo) = (self.upper_occlusal(xt, -CUSP), self.lower_occlusal(xt, 0.));
-                            let half = 0.5 * (hi.y - lo.y);
-                            let reach = (0.55 * k).min(1.6 * half);
-                            let inside = (self.upper.outer_at(xt) - at).max(0.) * k;
-                            let h = if half > 0. && inside < reach { half * sqrt(1. - inside / reach) } else { 0. };
-                            (self.map.p(xt, 8.).x, 0.5 * (hi.y + lo.y), h)
-                        };
-                        const N: usize = 8;
-                        for i in 0..=N {
-                            let (px, mid, h) = section(lerp(x_in, x_front, i as f64 / N as f64));
-                            t.push(v(px, mid + h));
+                    // the cheek lies on the upper row's buccal face above the mouth and on the
+                    // lower row's below it, where the jaw has carried that, and runs straight
+                    // from one to the other (held to the upper row alone it left a pocket in
+                    // front of the lower teeth whenever the jaw was down)
+                    let hi = self.upper_occlusal(self.upper.x_out(at) + gap, 0.);
+                    let lo = self.lower_occlusal(self.lower.x_out(at.min(self.lower.outer_max())) + gap, 0.);
+                    let down = v(sin(self.jaw_phi), -cos(self.jaw_phi));
+                    let x = hi.x + slide;
+                    {
+                        let t = &mut l.tissue[T_CHEEK[0]];
+                        let foot = add(lo, scale(down, 9. * k));
+                        t.push(v(foot.x + slide, foot.y));
+                        t.push(v(lo.x + slide, lo.y));
+                        if hi.y > lo.y + 0.05 * k {
+                            for i in 1..6 {
+                                let u = i as f64 / 6.;
+                                t.push(v(lerp(lo.x, hi.x, smoothstep(0., 1., u)) + slide, lerp(lo.y, hi.y, u)));
+                            }
                         }
-                        let (_, mid, h) = section(x_front);
-                        t.push(v(x + 0.2 * k, mid + h));
-                        t.push(v(x + 0.2 * k, mid - h));
-                        for i in (0..=N).rev() {
-                            let (px, mid, h) = section(lerp(x_in, x_front, i as f64 / N as f64));
-                            t.push(v(px, mid - h));
-                        }
+                        t.push(v(x, hi.y.max(lo.y)));
+                        t.push(v(x, 15. * k));
+                        t.push(v(15. * k, 15. * k));
+                        t.push(v(15. * k, foot.y));
                     }
                 } else if at < top + gap {
                     let hi = self.upper_occlusal(self.upper.back() + 1., 1.).y;
@@ -1024,27 +1275,46 @@ impl Parts {
                 }
             }
         }
-        // ---- faucial pillars between the pharynx and the molars, from where they leave the
-        // tongue's sides up: each a block whose face towards the midline is rounded (half an
-        // ellipse 5 mm deep) and whose foot is rounded too, so the isthmus narrows without a step
+        // ---- between the tooth rows the cheek bulges in when the jaw is down (the muscle in it
+        // keeps it against the teeth): up to half the rows' thickness at the middle of the gap,
+        // nothing where the rows meet. The air between the rows ends in a rounded wedge: against
+        // the rows' buccal faces, or half a centimetre inside the mouth's corner where that
+        // comes first (the corner's own tissue lies between the rows there; without it the gap
+        // ended in a straight edge at the corner).
         {
-            let fw = self.fauces_width();
-            let nose = 0.25 * k;
-            if az > fw - nose {
-                let x0 = self.fauces_x;
-                let x1 = self.ring_front;
-                let u = ((fw + nose - az) / (2. * nose)).clamp(0., 1.);
-                let half = 0.5 * (x1 - x0) * sqrt(1. - u * u);
-                let mid = 0.5 * (x0 + x1);
-                let foot = self.map.p(0., FAUCES_Y).y;
-                let t = &mut l.tissue[T_FAUCES];
-                for i in 0..=8 {
-                    let th = PI * (1. + i as f64 / 8.);
-                    t.push(v(mid + half * cos(th), foot + 0.6 * k * (1. + sin(th))));
+            let corner = self.lip_w + 0.25 * k;
+            if s.buccal_gap + 0.6 * s.cheek_puff == 0. && at <= self.upper.outer_max() && az > self.lip_w - 0.6 * k {
+                let (x_in, x_front) = (self.upper.x_in(at), self.upper.x_out(at).max(self.upper.x_in(at)));
+                let t = &mut l.tissue[T_CHEEK[1]];
+                let section = |xt: f64| -> (f64, f64, f64) {
+                    let (hi, lo) = (self.upper_occlusal(xt, -CUSP), self.lower_occlusal(xt, 0.));
+                    let half = 0.5 * (hi.y - lo.y);
+                    let reach = (0.55 * k).min(1.6 * half);
+                    let inside = ((self.upper.outer_at(xt) * k).min(corner) - az).max(0.);
+                    let bulge = if half > 0. && inside < reach { sqrt(1. - inside / reach) } else { 0. };
+                    // rows under 2.4 mm apart hold no air: the cheek and the tongue's
+                    // margin lie in the gap (it cut as a hair-thin wing on each side)
+                    let thin = 1. - smoothstep(0.12 * k, 0.3 * k, half);
+                    let h = if half > 0. { half * lerp(bulge, 1.05, thin) } else { 0. };
+                    (self.map.p(xt, 8.).x, 0.5 * (hi.y + lo.y), h)
+                };
+                const N: usize = 8;
+                for i in 0..=N {
+                    let (px, mid, h) = section(lerp(x_in, x_front, i as f64 / N as f64));
+                    t.push(v(px, mid + h));
                 }
-                t.push(v(mid + half, 15. * k));
-                t.push(v(mid - half, 15. * k));
+                let (px, mid, h) = section(x_front);
+                t.push(v(px + 0.2 * k, mid + h));
+                t.push(v(px + 0.2 * k, mid - h));
+                for i in (0..=N).rev() {
+                    let (px, mid, h) = section(lerp(x_in, x_front, i as f64 / N as f64));
+                    t.push(v(px, mid - h));
+                }
             }
+        }
+        // ---- the uvula: a lobe of round section, from inside the soft palate down its axis
+        if let Some(outline) = self.uvula_outline(z) {
+            l.tissue[T_UVULA].extend_from_slice(&outline);
         }
         // ---- the pharyngeal ring: everything behind and beside the pharynx at this offset
         {
@@ -1148,6 +1418,28 @@ impl Parts {
 #[inline]
 pub fn dot(a: Vec2, b: Vec2) -> f64 {
     a.x * b.x + a.y * b.y
+}
+/// Where the ray from `o` along the unit vector `d` first meets the polyline, within `reach`:
+/// the distance, the segment's index and the share of the segment before the hit.
+fn ray_hit(o: Vec2, d: Vec2, line: &[Vec2], reach: f64) -> Option<(f64, usize, f64)> {
+    let mut best: Option<(f64, usize, f64)> = None;
+    for i in 0..line.len().saturating_sub(1) {
+        let (a, e) = (sub(line[i], o), sub(line[i + 1], line[i]));
+        let den = d.x * e.y - d.y * e.x;
+        if den.abs() < 1e-12 {
+            continue;
+        }
+        let t = (a.x * e.y - a.y * e.x) / den;
+        let u = (a.x * d.y - a.y * d.x) / den;
+        if t > 1e-6 && t <= reach && (0. ..=1.).contains(&u) && best.is_none_or(|b| t < b.0) {
+            best = Some((t, i, u));
+        }
+    }
+    best
+}
+/// crown height above the gum (template cm) at template x of an arch: incisors 1.0, molars 0.75
+pub fn crown_height(arch: &Arch, xt: f64) -> f64 {
+    lerp(1.0, 0.75, smoothstep(0., 0.5, (arch.incisor_x - xt) / arch.depth))
 }
 /// upper occlusal plane height at template x (template cm)
 #[inline]

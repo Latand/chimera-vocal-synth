@@ -292,8 +292,9 @@ fn drawn_side_cavities_and_walls_are_the_sliced_geometry() {
                 }
             }
             // the pharyngeal wall's mesh lies on the laminae's own ring, at any lateral offset
+            // (its first grid, 34 × 25; the tube's side walls follow it)
             let wall = &m.meshes()[3];
-            for j in 0..wall.positions.len() / 3 {
+            for j in 0..34 * 25 {
                 let (x, y, z) = (wall.positions[3 * j] as f64, wall.positions[3 * j + 1] as f64, wall.positions[3 * j + 2] as f64);
                 // (at the very edge the corner's profile is vertical: single precision moves it)
                 if z.abs() > 0.9 * pa.pharynx_width(y) {
@@ -462,4 +463,151 @@ fn lip_rounding_narrows_the_opening() {
     m.compute(&u.artic, &ShapeParams { lip_round: 1., ..ShapeParams::default() }, &mut f).unwrap();
     assert!((m.parts.lip_w / engine(&u.artic) - 0.35).abs() < 1e-9);
     assert!(f.cuts().last().unwrap().width <= derived + 1e-9);
+}
+
+/// Slice-critic, second round: the pharynx's cuts were domes on a straight floor (a ring that
+/// bulged at the back over a tongue root flat across; against MRI the shape was upside down),
+/// and every cut ended sideways in a wall or a step. The posterior wall is now flat with round
+/// corners, the front wall's sides come back to it, and the lumen ends sideways in a taper.
+#[test]
+fn the_pharynx_cuts_lie_flat_on_the_posterior_wall_and_taper_sideways() {
+    let all = presets(BodyMix::MALE);
+    let mut m = Tract3d::new(BODY_MALE);
+    let mut f = Tract3dFrame::default();
+    for name in ["a", "i", "ə", "u"] {
+        let p = all.iter().find(|p| p.name == name).unwrap();
+        m.compute(&p.artic, &p.shape, &mut f).unwrap();
+        for share in [0.25, 0.3, 0.35] {
+            let c = &f.cuts()[((f.area_fn.s.len() - 1) as f64 * share).round() as usize];
+            let main = c.regions.iter().position(|r| r.tag == "main").expect("a region on the midline");
+            // per row of the main region: lateral offset, front edge (towards the tongue), back edge (the wall)
+            let rows: Vec<(f64, f64, f64)> = c
+                .rows
+                .iter()
+                .filter_map(|r| {
+                    let own: Vec<_> = r.intervals[..r.count].iter().filter(|q| q.component == main).collect();
+                    (!own.is_empty()).then(|| (r.z, own.iter().map(|q| q.lo).fold(f64::INFINITY, f64::min), own.iter().map(|q| q.hi).fold(f64::NEG_INFINITY, f64::max)))
+                })
+                .collect();
+            let half = rows.iter().map(|r| r.0.abs()).fold(0., f64::max);
+            let mid = rows.iter().min_by(|a, b| a.0.abs().total_cmp(&b.0.abs())).unwrap();
+            let thick = mid.2 - mid.1;
+            // flat behind: over the middle half of the width the wall's edge varies by under 1.5 mm
+            let (mut lo, mut hi) = (f64::INFINITY, f64::NEG_INFINITY);
+            for r in rows.iter().filter(|r| r.0.abs() <= 0.5 * half) {
+                lo = lo.min(r.2);
+                hi = hi.max(r.2);
+            }
+            assert!(hi - lo < 0.15, "{name} at {share}: the posterior wall's edge varies by {:.2} cm over the middle of the cut", hi - lo);
+            // the belly is in front: at 0.7 of the half-width the front edge has come back by a tenth of the thickness or more
+            let at = rows.iter().filter(|r| r.0 >= 0.).min_by(|a, b| (a.0 - 0.7 * half).abs().total_cmp(&(b.0 - 0.7 * half).abs())).unwrap();
+            assert!(at.1 - mid.1 > 0.1 * thick, "{name} at {share}: the front wall has come back {:.2} cm at 0.7 of the half-width ({thick:.2} cm thick on the midline)", at.1 - mid.1);
+            // and the cut ends thin: its outermost row holds under 0.4 of the midline's thickness
+            let edge = rows.iter().max_by(|a, b| a.0.total_cmp(&b.0)).unwrap();
+            assert!(edge.2 - edge.1 < 0.4 * thick, "{name} at {share}: the cut ends {:.2} cm thick against {thick:.2} cm on the midline", edge.2 - edge.1);
+        }
+    }
+}
+
+/// Slice-critic, second round: with the jaw down the mouth's cuts stood on square legs and the
+/// tooth rows were blocks. The legs were air beside the tongue's tip down to the floor of the
+/// mouth (the tip lobe narrowed to its tip as a wedge) and, with the lips drawn together, air in
+/// front of the lower teeth (the cheek was held to the upper row alone). The tongue's front is
+/// now round and fills the lower arch at rest, the cheek follows the lower row, and the crowns
+/// are round.
+#[test]
+fn the_tongue_fills_the_lower_arch_the_cheek_follows_the_lower_teeth_and_the_crowns_are_round() {
+    let all = presets(BodyMix::MALE);
+    let mut m = Tract3d::new(BODY_MALE);
+    let mut f = Tract3dFrame::default();
+    let k = BODY_MALE.scale;
+    for name in ["a", "wide", "ə"] {
+        let p = all.iter().find(|p| p.name == name).unwrap();
+        m.compute(&p.artic, &p.shape, &mut f).unwrap();
+        let pa = &m.parts;
+        // 3.5 mm inside the tongue at 0.7 of the tip lobe's length: tongue on the midline, and
+        // tongue still 1 cm to the side (the wedge ended at 0.6 of the lobe there)
+        let n = pa.dorsal.len();
+        let x = pa.lobe_start as f64 + 0.7 * (n - 1 - pa.lobe_start) as f64;
+        let (i, t) = (x as usize, x - (x as usize) as f64);
+        let q = v(pa.dorsal[i].x + (pa.dorsal[i + 1].x - pa.dorsal[i].x) * t - 0.35 * k * pa.dn[i].x, pa.dorsal[i].y + (pa.dorsal[i + 1].y - pa.dorsal[i].y) * t - 0.35 * k * pa.dn[i].y);
+        assert!(!m.air(q.x, q.y, 0.), "{name}: the probe lies in the tongue on the midline");
+        assert!(!m.air(q.x, q.y, 1.0 * k) && !m.air(q.x, q.y, -1.0 * k), "{name}: air beside the tongue's tip 1 cm off the midline");
+    }
+    // an open jaw behind lips drawn together: the mouth's corners stand inside the arches
+    let mut a = all.iter().find(|p| p.name == "a").unwrap().artic;
+    a.lip_width = 0.1;
+    m.compute(&a, &ShapeParams::default(), &mut f).unwrap();
+    let pa = &m.parts;
+    let mut checked = 0;
+    for at in [1.4, 1.6, 1.8, 2.0, 2.2, 2.4] {
+        if at * k < pa.lip_w + 0.3 * k {
+            continue;
+        }
+        // 2.5 mm in front of the lower row's buccal face, from just under its biting surface
+        // down to its gum line: the cheek, wherever the jaw has carried the row
+        let xt = pa.lower.x_out(at) + 0.25;
+        for down in [0.15, 0.4, 0.7] {
+            let q = pa.lower_occlusal(xt, down);
+            assert!(!m.air(q.x, q.y, at * k), "air in front of the lower teeth at lateral {at} cm, {down} cm below their biting surface");
+            checked += 1;
+        }
+    }
+    assert!(checked >= 9, "{checked} points behind the mouth's corners");
+    // a row's surface: at its gum line on both edges and behind its last tooth, a crown's height
+    // out along its middle
+    let pa = &m.parts;
+    for arch in [&pa.upper, &pa.lower] {
+        let xt = arch.incisor_x - 0.6 * arch.depth;
+        let (inner, outer) = (arch.inner_at(xt), arch.outer_at(xt));
+        assert!(pa.crown_round(arch, xt, inner) > 0.999 && pa.crown_round(arch, xt, outer) > 0.999);
+        assert!(pa.crown_round(arch, xt, 0.5 * (inner + outer)) < 1e-9);
+        assert!(pa.crown_round(arch, arch.back(), 0.5 * (inner + outer)) > 0.999);
+        // rounded, not chamfered: a quarter of the way across, four fifths of the crown stand
+        assert!(pa.crown_round(arch, xt, inner + 0.25 * (outer - inner)) < 0.2);
+    }
+}
+
+/// Slice-critic, second round: the soft palate was a strip without thickness that tapered to a
+/// point, with no uvula; the oral cavity ended behind in blocks (the pillars). The uvula is now a
+/// lobe that hangs from the soft palate, and the soft palate's sides come down to the tongue.
+#[test]
+fn the_uvula_hangs_and_the_faucial_arches_come_down_to_the_tongue() {
+    let all = presets(BodyMix::MALE);
+    let mut m = Tract3d::new(BODY_MALE);
+    let mut f = Tract3dFrame::default();
+    let k = BODY_MALE.scale;
+    for name in ["a", "i", "ə"] {
+        let p = all.iter().find(|p| p.name == name).unwrap();
+        m.compute(&p.artic, &p.shape, &mut f).unwrap();
+        let pa = &m.parts;
+        // the lobe in the midsagittal lamina: tissue of its own, hanging at least 4 mm below where it leaves the soft palate
+        let mid = m.midsagittal();
+        let lobe = &mid.iter().find(|x| x.0 == "uvula").expect("the uvula's polygon in the midline's lamina").1;
+        let lowest = lobe.iter().map(|q| q.y).fold(f64::INFINITY, f64::min);
+        assert!(pa.uvula.0.y - lowest > 0.4 * k, "{name}: the uvula hangs {:.2} cm", pa.uvula.0.y - lowest);
+        // it is a lobe: half as wide as it is at 0.87 of its half-width, gone beside that
+        let half = pa.uvula.4;
+        assert!(pa.uvula_outline(1.01 * half).is_none() && pa.uvula_outline(0.).is_some());
+        // the arches: half-way along the soft palate the roof at the tube's side lies on the
+        // tongue (no air under it), and stands clear of it on the midline
+        let j = pa.velum.len() * 2 / 3;
+        let q = pa.velum[j];
+        let side = pa.vtube[j] + 0.1 * k;
+        let mut row = chimera::anatomy::tract3d::Row::default();
+        let below = |m: &Tract3d, z: f64, row: &mut chimera::anatomy::tract3d::Row| {
+            // air on the vertical line through the soft palate's point, from 3 cm below it up to it
+            let mut total = 0.;
+            for i in 0..60 {
+                let y = q.y - 0.05 * i as f64;
+                m.air_intervals(y, z, row);
+                if row.intervals[..row.count].iter().any(|r| r.lo <= q.x && q.x <= r.hi) {
+                    total += 0.05;
+                }
+            }
+            total
+        };
+        let (open, shut) = (below(&m, 0., &mut row), below(&m, side, &mut row));
+        assert!(open > 0.3 * k && shut < 0.06, "{name}: {open:.2} cm of air under the soft palate on the midline, {shut:.2} cm at the tube's side");
+    }
 }

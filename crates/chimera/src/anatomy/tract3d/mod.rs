@@ -105,7 +105,7 @@ impl Tract3dFrame {
 }
 
 const AIR_NAMES: [&str; lamina::N_AIR] = ["envelope", "tube", "piriform", "piriform", "vallecula", "vallecula"];
-const TISSUE_NAMES: [&str; lamina::N_TISSUE] = ["tongue", "epiglottis", "upperLip", "lowerLip", "upperTeeth", "lowerTeeth", "pharynxWall", "pharynxWall", "fauces", "cheek", "cheek", "aryFold"];
+const TISSUE_NAMES: [&str; lamina::N_TISSUE] = ["tongue", "epiglottis", "upperLip", "lowerLip", "upperTeeth", "lowerTeeth", "pharynxWall", "pharynxWall", "uvula", "cheek", "cheek", "aryFold"];
 
 #[derive(Clone, Debug, Serialize)]
 pub struct NamedPolygon {

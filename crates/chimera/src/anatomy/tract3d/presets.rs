@@ -76,10 +76,10 @@ pub fn presets(body: BodyMix) -> Vec<Preset> {
                 // jaw nearly closed, tip forward under the ridge, margins braced on the teeth:
                 // the air leaves along a narrow midline groove (tuned with `chimera tract3d tune`)
                 a.jaw = 0.14;
-                a.tt_x = 6.98;
-                a.tt_y = 9.25;
-                p.groove_blade = 0.1;
-                p.groove_tip = 0.11;
+                a.tt_x = 6.97;
+                a.tt_y = 9.21;
+                p.groove_blade = 0.16;
+                p.groove_tip = 0.2;
                 p.groove_width = 0.5;
                 p.side_blade = 0.3;
                 p.side_tip = 0.3;
@@ -89,7 +89,7 @@ pub fn presets(body: BodyMix) -> Vec<Preset> {
                 a.tb_x = 3.06;
                 a.tb_y = 7.6;
                 a.tt_x = 5.76;
-                a.tt_y = 10.15;
+                a.tt_y = 9.8;
                 a.jaw = 0.31;
                 p.side_back = -0.06;
                 p.side_blade = -0.23;
@@ -140,8 +140,8 @@ pub fn presets(body: BodyMix) -> Vec<Preset> {
             "retroflex" => {
                 a = posture("ɹ", body);
                 a.tb_y = 7.17;
-                a.tt_x = 5.8;
-                a.tt_y = 10.;
+                a.tt_x = 5.74;
+                a.tt_y = 9.8;
                 p.tip_width = 0.4;
                 p.side_blade = -0.3;
             }

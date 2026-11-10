@@ -713,6 +713,11 @@ impl HumanVocalTract {
     pub fn palate(&self) -> &[Vec2] {
         &self.palate
     }
+    /// The whole posterior pharyngeal wall, from below the larynx up over the nasopharynx's roof
+    /// (the acoustic outline ends it at the port window), for drawing.
+    pub fn pharynx_wall(&self) -> &[Vec2] {
+        &self.phar_wall
+    }
 
     /// Compute a new frame (allocates; for the UI and tests).
     pub fn compute_new(&mut self, a: &HumanArtic) -> HumanFrame {
