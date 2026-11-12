@@ -303,3 +303,134 @@ export interface CreatureTelemetry {
   source: Record<string, number>;
   call: string | null;
 }
+
+/** The 3D tract (lab mode): centimetres, x forward, y up, z to the speaker's right. */
+export interface Tract3dSpec {
+  key: string;
+  element: string;
+  unit: string;
+  min: number;
+  max: number;
+  default: number;
+  doc: string;
+}
+/** 3D parameters as offsets from what the articulators imply (the engine's `derive`). */
+export type Tract3dShape = Record<string, number>;
+export interface Tract3dPreset {
+  name: string;
+  label: string;
+  artic: HumanArtic;
+  shape: Tract3dShape;
+}
+export interface Tract3dRegion {
+  tag: string;
+  area: number;
+  minZ: number;
+  maxZ: number;
+  minU: number;
+  maxU: number;
+}
+/** A cut through the laminae: per lamina (z), the air intervals along u from the origin. */
+export interface Tract3dCut {
+  origin: { x: number; y: number };
+  u: { x: number; y: number };
+  s: number;
+  area: number;
+  weightedArea: number;
+  perimeter: number;
+  channels: number;
+  width: number;
+  height: number;
+  fold: boolean;
+  rows: { z: number; intervals: { lo: number; hi: number; component: number }[] }[];
+  regions: Tract3dRegion[];
+}
+export interface Tract3dSlice {
+  s: number;
+  area: number;
+  channels: number;
+  width: number;
+  height: number;
+  fold: boolean;
+  origin: { x: number; y: number };
+  u: { x: number; y: number };
+}
+export type Tract3dPlane =
+  | null
+  | { kind: "coronal" | "axial"; at: number | null; cut: Tract3dCut }
+  | { kind: "sagittal"; at: number | null; step: number; rows: { y: number; x: number[] }[] };
+export interface Tract3dMesh {
+  element: string;
+  positions: number[];
+  indices: number[];
+  lines: number[];
+}
+export interface Tract3dFrame {
+  /** the parameters in use (derived + offsets) */
+  shape: Tract3dShape;
+  /** what the articulators alone imply */
+  derived: Tract3dShape;
+  centreline: { x: number; y: number }[];
+  areaFn: {
+    s: number[];
+    area: number[];
+    weightedArea: number[];
+    perimeter: number[];
+    channels: number[];
+    width: number[];
+    height: number[];
+    length: number;
+    volume: number;
+    minArea: number;
+    minS: number;
+  };
+  slices: Tract3dSlice[];
+  cut: Tract3dCut;
+  plane: Tract3dPlane;
+  cavities: { kind: string; side: number; attachment: number; volume: number; neckArea: number; depth: number }[];
+  meshes: Tract3dMesh[] | null;
+}
+/** One element's place in a view's positions, with its triangles when asked for. */
+export interface Tract3dViewMesh {
+  element: string;
+  /** first vertex and vertex count in `Tract3dView.positions` */
+  start: number;
+  count: number;
+  indices?: number[];
+  lines?: number[];
+  /** runs of `indices` by material ("tongue", "enamel", "gum", …) */
+  groups?: { material: string; start: number; count: number }[];
+}
+export interface Tract3dPolygon {
+  name: string;
+  points: { x: number; y: number }[];
+}
+/** What the head needs beside the meshes (`Tract3d::display` in the engine). */
+export interface Tract3dDisplay {
+  /** the lips' meeting line from the midline out: both lips' edges at each lateral offset */
+  lips: { halfWidth: number; z: number[]; upper: { x: number; y: number }[]; lower: { x: number; y: number }[] };
+  /** the jaw's pivot and its turn from rest (rad) */
+  jaw: { pivot: { x: number; y: number }; angle: number };
+  glottis: { x: number; y: number };
+  /** the midsagittal lamina: air polygons (the first the envelope), tissue polygons */
+  air: Tract3dPolygon[];
+  tissue: Tract3dPolygon[];
+  /** the engine's own midline outlines (tongue, velum, teeth, jaw bone, nasal cavity) */
+  outlines: Tract3dPolygon[];
+}
+export interface Tract3dView {
+  meshes: Tract3dViewMesh[];
+  display: Tract3dDisplay;
+  shape: Tract3dShape;
+  /** every mesh's vertices, x y z (cm) */
+  positions: Float32Array;
+}
+export interface Tract3dWant {
+  /** include the element meshes (default true) */
+  meshes?: boolean;
+  /** which perpendicular cut to return with its rows, 0 (glottis) … 1 (lips) */
+  cut?: number;
+  plane?: "coronal" | "axial" | "sagittal";
+  /** the plane's position, template cm: x for coronal, y for axial, z for sagittal */
+  at?: number;
+}

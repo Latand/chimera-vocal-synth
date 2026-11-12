@@ -1,7 +1,7 @@
 /**
  * Layout lint: a smoke test of the layout. Loads every mode at phone, tablet and desktop sizes in
  * headless Chromium, before and after audio starts, then some alternate states (every encoder page,
- * every creature, the 3D face, a phrase being spoken) and the duet page (`?show=`, with a short
+ * every creature, the 3D head whole and the flat face view, a phrase being spoken) and the duet page (`?show=`, with a short
  * duet it renders first), and fails on mistakes screenshot reviews kept missing:
  *
  *  - overlap     two pieces of text or controls drawn over each other (DOM text, buttons, inputs,
@@ -47,7 +47,7 @@ export const VIEWPORTS: { w: number; h: number }[] = [
   { w: 1920, h: 1080 },
   { w: 2560, h: 1440 },
 ];
-const MODES = ["play", "speak", "sing", "bestiary", "beatbox"] as const;
+const MODES = ["play", "speak", "sing", "bestiary", "beatbox", "lab"] as const;
 
 interface Problem {
   kind: string;
@@ -276,8 +276,9 @@ async function main() {
   const duetDir = `${out}/duet-show`;
   if (duet) makeDuet(duetDir);
 
-  // WebGL through SwiftShader, for the 3D face
-  const browser = await chromium.launch({ headless: true, args: ["--autoplay-policy=no-user-gesture-required", "--use-angle=swiftshader", "--enable-unsafe-swiftshader"] });
+  // (no GL flags: headless Chromium draws WebGL as it is; forcing SwiftShader through ANGLE made
+  // a frame of the 3D head take seconds, and a click on the next mode then timed out)
+  const browser = await chromium.launch({ headless: true, args: ["--autoplay-policy=no-user-gesture-required"] });
   let errors = 0, warnings = 0, views = 0;
   for (const { w, h } of viewports) {
     const page = await browser.newPage({ viewport: { width: w, height: h }, deviceScaleFactor: 1 });
@@ -302,7 +303,7 @@ async function main() {
     const mode = (m: string) => page.getByRole("radio", { name: new RegExp(`^${m}$`, "i") }).click();
     // every encoder page of the screens on the right (each page has its own labels)
     const pages = async (state: string) => {
-      const tabs = page.locator(".right .enc-tab");
+      const tabs = page.locator(".right .enc-tab, .lab-layout .enc-tab");
       for (let i = 1; i < (await tabs.count()); i++) {
         await tabs.nth(i).click();
         await check(`${state}, controls page ${(await tabs.nth(i).textContent())?.trim()}`);
@@ -335,15 +336,38 @@ async function main() {
       await check(`${m} (running)`);
       await pages(`${m} (running)`);
       if (m === "play") {
-        // the 3D face lays its readouts out on its own
-        await page.locator(".view-toggles .toggle", { hasText: "3D" }).click();
-        await check("play (running), 3D", 2500);
-        await page.locator(".view-toggles .toggle", { hasText: "3D" }).click();
+        // the face screen opens on the 3D head, cut open; the whole head and the flat view (which
+        // has toggles of its own) lay their readouts out again
+        const toggle = (label: string) => page.locator(".view-toggles .toggle", { hasText: label }).click();
+        await toggle("Cut away");
+        await check("play (running), whole head", 2500);
+        await toggle("Cut away");
+        await toggle("3D");
+        await check("play (running), flat view", 1200);
+        await toggle("3D");
       }
       if (m === "speak") {
         // the gestural score with a phrase in it, mid-utterance
         await page.getByRole("button", { name: /^Speak$/ }).click();
         await check("speak (running), speaking", 900);
+      }
+      if (m === "lab") {
+        // every element's controls (own labels and units), every plane, and a posture with
+        // several channels in its cut
+        const elements = page.getByRole("group", { name: "Controls for" }).getByRole("button");
+        for (let i = 1; i < (await elements.count()); i++) {
+          await elements.nth(i).click();
+          const name = (await elements.nth(i).textContent())?.trim();
+          await check(`lab (running), ${name} controls`);
+          await pages(`lab (running), ${name}`);
+        }
+        await elements.first().click();
+        for (const plane of ["Sagittal", "Coronal", "Axial", "Along tract"]) {
+          await page.getByRole("group", { name: "Plane" }).getByRole("button", { name: plane }).click();
+          await check(`lab (running), ${plane} plane`);
+        }
+        await page.getByRole("button", { name: "lateral /l/" }).click();
+        await check("lab (running), /l/");
       }
       if (m === "bestiary") {
         // each creature has its own names and parameters

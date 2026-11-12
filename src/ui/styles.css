@@ -2858,3 +2858,140 @@ input[type="range"]::-moz-range-thumb {
     padding: 7px 8px 0;
   }
 }
+
+/* ---------- Lab: the 3D tract. Controls stay in flow; canvases fill boxes of fixed height. */
+.wall-lab {
+  display: block;
+}
+.lab-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
+  grid-template-areas: "tract cut" "tract area" "shape sound";
+  gap: 12px;
+  align-items: start;
+}
+.lab-tract { grid-area: tract; }
+.lab-cut-screen { grid-area: cut; }
+.lab-area-screen { grid-area: area; }
+.lab-shape { grid-area: shape; }
+.lab-sound { grid-area: sound; }
+/* the 3D stage with the start prompt over it (and over nothing else) */
+.lab-stage-box {
+  position: relative;
+}
+.lab-stage {
+  position: relative;
+  height: clamp(340px, 56vh, 640px);
+  margin: 6px 12px 0;
+  overflow: hidden;
+  touch-action: none;
+}
+.lab-stage > canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+.lab-canvas-box {
+  position: relative;
+  margin: 6px 12px 0;
+}
+.lab-canvas-box > canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+.lab-cut-box { height: 250px; }
+.lab-area-box { height: 190px; }
+.lab-spec-box { height: 170px; }
+.lab-area { cursor: crosshair; touch-action: pan-y; }
+.lab-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 8px 12px 0;
+}
+.lab-presets .chip {
+  text-transform: none;
+  letter-spacing: 0.04em;
+  min-width: 34px;
+}
+.lab-el.on {
+  color: var(--el);
+  border-color: var(--el);
+  text-shadow: 0 0 6px var(--el);
+}
+.lab-readout,
+.lab-note {
+  margin: 8px 12px 0;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--blue);
+}
+.lab-readout b {
+  color: var(--amber);
+  font-weight: 400;
+}
+.lab-note {
+  color: var(--blue-mid);
+}
+.lab-note:last-child,
+.lab-row:last-child,
+.lab-say:last-child {
+  margin-bottom: 12px;
+}
+.lab-slider {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 12px;
+  margin: 8px 12px 0;
+  font-size: 11px;
+  color: var(--blue);
+}
+.lab-slider input {
+  flex: 1 1 160px;
+  min-width: 0;
+}
+.lab-listen {
+  align-items: center;
+}
+.lab-say {
+  display: flex;
+  flex: 1 1 220px;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  font-size: 11px;
+  color: var(--blue);
+}
+.lab-say input {
+  flex: 1;
+  min-width: 0;
+  background: #000;
+  color: var(--blue);
+  border: 1px solid var(--frame);
+  padding: 6px 8px;
+  font-family: var(--font);
+  font-size: 13px;
+}
+.lab-shape .enc-label {
+  white-space: normal;
+  text-align: center;
+  min-height: 26px;
+  line-height: 13px;
+}
+.lab-shape .enc-pages {
+  padding-top: 8px;
+}
+@media (max-width: 1100px) {
+  .lab-layout {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: "tract" "cut" "area" "shape" "sound";
+  }
+  .lab-stage {
+    height: min(92vw, 520px);
+  }
+}

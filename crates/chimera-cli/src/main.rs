@@ -8,6 +8,7 @@ mod compare;
 mod diagnose;
 mod js;
 mod render;
+mod tract3d;
 mod wav;
 
 use chimera::anatomy::human::{BODY_CHILD, BODY_FEMALE, BODY_MALE, BodyMix, HumanBody};
@@ -24,6 +25,11 @@ usage: chimera <command> [args] [--float]
   render beatbox [outdir] [preset name | pattern] [male|female|child] [bpm] [bars]
   render creature [creatureId] [outdir]
   render vowels  [male|female|child] [out]
+  tract3d model|sheet <preset|artic.json> <out> [--body male|female|child]
+                 (the 3D tract's geometry as JSON, or a drawing of its laminae, cuts and area)
+  tract3d presets <out-dir> | tune <preset> | benchmark
+  tract3d reference <sound-dir> <out-dir> | validate <dvtd-root> <out-dir> | fit-derive <out-dir>
+  tract3d usc <volume.mat> <out-dir>     (MRI comparison: tools/tract3d/README.md)
   diagnose       [outdir]
   compare csd    [csd-dir] [outdir] [--songs a|b|all|en001a,…] [--body female] [--jobs n]
                  [--against earlier/score.json]  (score.json: distance to the singer, and the verdict)
@@ -108,6 +114,7 @@ fn run(args: Vec<String>) -> Result<(), String> {
             }
         }
         ["compare", "csd", ..] => compare::csd(&ctx, &args[2..]),
+        ["tract3d", ..] => tract3d::run(&args[1..]),
         ["diagnose", ..] => diagnose::run(&ctx, &args[1..]),
         ["calibrate", "vowels", ..] => calibrate::vowels(&args[2..]),
         ["calibrate", "consonants", ..] => calibrate::consonants(&args[2..]),
